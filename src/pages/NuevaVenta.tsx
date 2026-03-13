@@ -13,6 +13,8 @@ import {
   CheckCircle,
   LogOut,
   AlertTriangle,
+  ChevronUp,
+  X,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -68,6 +70,7 @@ export default function NuevaVenta() {
   const [vendedorNombre, setVendedorNombre] = useState('');
   const [inputVendedor, setInputVendedor] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(false);
 
   // ── Fetch productos ──────────────────────────────────────────────────────
   const fetchProductos = useCallback(async () => {
@@ -76,7 +79,7 @@ export default function NuevaVenta() {
       setErrorCatalogo(null);
       const { data } = await axios.get<{ data: Producto[]; meta: MetaPaginacion }>(
         `${API_BASE}/productos`,
-        { params: { page, limit: LIMIT, ...(debouncedSearch && { search: debouncedSearch }) } }
+        { params: { page, limit: LIMIT, soloActivos: true, ...(debouncedSearch && { search: debouncedSearch }) } }
       );
       setProductos(data.data);
       setMeta(data.meta);
@@ -212,12 +215,12 @@ export default function NuevaVenta() {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full gap-0">
+    <div className="flex flex-col md:flex-row h-full gap-0 relative">
 
       {/* ══════════════════════════════════════════════════════
           COLUMNA IZQUIERDA — Catálogo de Productos
       ══════════════════════════════════════════════════════ */}
-      <div className="flex-1 flex flex-col bg-gray-50 border-r border-gray-200 min-w-0">
+      <div className="flex-1 flex flex-col bg-gray-50 border-r border-gray-200 min-w-0 pb-20 md:pb-0">
 
         {/* Header catálogo */}
         <div className="p-5 bg-white border-b border-gray-200 shadow-sm">
@@ -402,9 +405,50 @@ export default function NuevaVenta() {
       </div>
 
       {/* ══════════════════════════════════════════════════════
-          COLUMNA DERECHA — Comanda Actual
+          FAB — Ver Carrito (solo móvil)
       ══════════════════════════════════════════════════════ */}
-      <div className="w-96 flex flex-col bg-white shadow-xl">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 p-3 bg-white border-t border-gray-200 shadow-lg">
+        <button
+          onClick={() => setIsCartOpen(true)}
+          className="w-full flex items-center justify-between px-5 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-bold text-sm shadow-lg shadow-indigo-200 transition-all"
+        >
+          <div className="flex items-center gap-2">
+            <ShoppingCart size={18} />
+            <span>Ver Comanda</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {carrito.length > 0 && (
+              <span className="bg-white text-indigo-600 text-xs font-black px-2 py-0.5 rounded-full">
+                {carrito.reduce((acc, i) => acc + i.cantidad, 0)}
+              </span>
+            )}
+            <span className="font-black">{formatPrecio(total)}</span>
+            <ChevronUp size={16} />
+          </div>
+        </button>
+      </div>
+
+      {/* Overlay oscuro (móvil) */}
+      {isCartOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+          onClick={() => setIsCartOpen(false)}
+        />
+      )}
+
+      {/* ══════════════════════════════════════════════════════
+          COLUMNA DERECHA — Comanda Actual
+          Desktop: columna fija derecha
+          Móvil: sheet desde abajo
+      ══════════════════════════════════════════════════════ */}
+      <div className={`
+        md:w-96 md:flex md:flex-col md:bg-white md:shadow-xl md:static md:translate-y-0
+        fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl shadow-2xl
+        flex flex-col
+        transition-transform duration-300 ease-in-out
+        max-h-[85vh] md:max-h-full
+        ${isCartOpen ? 'translate-y-0' : 'translate-y-full md:translate-y-0'}
+      `}>
 
         {/* Header comanda */}
         <div className="p-5 border-b border-gray-100">
@@ -416,6 +460,14 @@ export default function NuevaVenta() {
                 {carrito.reduce((acc, i) => acc + i.cantidad, 0)} ítems
               </span>
             )}
+            {/* Botón cerrar — solo móvil */}
+            <button
+              onClick={() => setIsCartOpen(false)}
+              className="md:hidden ml-auto p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+              aria-label="Cerrar comanda"
+            >
+              <X size={18} />
+            </button>
           </div>
 
           {/* Vendedor del turno */}

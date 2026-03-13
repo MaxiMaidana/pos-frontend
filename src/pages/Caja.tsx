@@ -15,8 +15,9 @@ import {
   XCircle,
   LogOut,
   Lock,
-  DollarSign,
+  MonitorX,
   Building2,
+  DollarSign,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -133,7 +134,7 @@ export default function Caja() {
         setFormApertura((prev) => ({ ...prev, caja_id: data[0].id }));
       }
     } catch {
-      // Si falla, el select quedará vacío; el botón de submit quedará deshabilitado
+      // Si falla, el select quedará vacío
     }
   }, []);
 
@@ -266,109 +267,122 @@ export default function Caja() {
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // RENDER — Caja Cerrada
+  // RENDER — Caja Cerrada (Apertura de Turno)
   // ─────────────────────────────────────────────────────────────────────────
 
   if (!sesion) {
     return (
-      <div className="flex h-full items-center justify-center bg-gray-50">
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-sm p-8">
-
-          {/* Ícono y título */}
-          <div className="flex flex-col items-center mb-7">
-            <div className="p-4 bg-indigo-50 rounded-2xl mb-3">
-              <Lock size={28} className="text-indigo-500" />
-            </div>
-            <h2 className="text-xl font-black text-gray-800">Apertura de Turno</h2>
-            <p className="text-sm text-gray-400 mt-1.5 text-center leading-relaxed">
-              Ingresá tus datos para abrir la caja<br />y comenzar a cobrar.
+      <>
+        {/* ── Bloque móvil ────────────────────────────────────────────── */}
+        <div className="flex md:hidden flex-col items-center justify-center h-full bg-gray-50 text-center p-8 gap-5">
+          <div className="p-5 bg-red-50 rounded-full">
+            <MonitorX size={40} className="text-red-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-gray-700">Cobros no disponibles en móvil</h2>
+            <p className="text-sm text-gray-400 mt-2 max-w-xs leading-relaxed">
+              Por favor, dirigíte a la computadora de la caja física para cobrar y cerrar las comandas.
             </p>
           </div>
-
-          <form
-            onSubmit={(e) => { e.preventDefault(); handleAbrirCaja(); }}
-            className="space-y-4"
-          >
-            {/* Selector de caja */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                Caja de trabajo
-              </label>
-              <div className="relative">
-                <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                <select
-                  value={formApertura.caja_id}
-                  onChange={(e) => setFormApertura((prev) => ({ ...prev, caja_id: e.target.value }))}
-                  className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent appearance-none cursor-pointer transition"
-                >
-                  {cajasDisponibles.length === 0 && (
-                    <option value="">Cargando cajas...</option>
-                  )}
-                  {cajasDisponibles.map((caja) => (
-                    <option key={caja.id} value={caja.id}>{caja.nombre}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Nombre del cajero */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                Tu nombre
-              </label>
-              <div className="relative">
-                <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                <input
-                  type="text"
-                  value={formApertura.cajero_nombre}
-                  onChange={(e) => setFormApertura((prev) => ({ ...prev, cajero_nombre: e.target.value }))}
-                  placeholder="Ej: María García"
-                  autoFocus
-                  autoComplete="off"
-                  className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
-                />
-              </div>
-            </div>
-
-            {/* Monto inicial */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                Monto inicial en caja
-              </label>
-              <div className="relative">
-                <DollarSign size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={formApertura.monto_inicial}
-                  onChange={(e) => setFormApertura((prev) => ({ ...prev, monto_inicial: e.target.value }))}
-                  placeholder="0.00"
-                  className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isAbriendo || !formApertura.cajero_nombre.trim() || !formApertura.caja_id}
-              className={`
-                w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 mt-2
-                ${isAbriendo || !formApertura.cajero_nombre.trim() || !formApertura.caja_id
-                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  : 'bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-lg shadow-indigo-100 hover:shadow-indigo-200'
-                }
-              `}
-            >
-              {isAbriendo ? (
-                <><Loader2 size={16} className="animate-spin" /> Abriendo caja...</>
-              ) : (
-                <><Wallet size={16} /> Abrir Caja y Comenzar</>
-              )}
-            </button>
-          </form>
         </div>
-      </div>
+
+        {/* ── Contenido desktop ───────────────────────────────────────── */}
+        <div className="hidden md:flex h-full items-center justify-center bg-gray-50">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-sm p-8">
+
+            {/* Ícono y título */}
+            <div className="flex flex-col items-center mb-7">
+              <div className="p-4 bg-indigo-50 rounded-2xl mb-3">
+                <Lock size={28} className="text-indigo-500" />
+              </div>
+              <h2 className="text-xl font-black text-gray-800">Apertura de Turno</h2>
+              <p className="text-sm text-gray-400 mt-1.5 text-center leading-relaxed">
+                Configurá la caja y el monto inicial<br />para comenzar a cobrar.
+              </p>
+            </div>
+
+            <form
+              onSubmit={(e) => { e.preventDefault(); handleAbrirCaja(); }}
+              className="space-y-4"
+            >
+              {/* Selector de caja */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Caja de trabajo
+                </label>
+                <div className="relative">
+                  <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <select
+                    value={formApertura.caja_id}
+                    onChange={(e) => setFormApertura((prev) => ({ ...prev, caja_id: e.target.value }))}
+                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent appearance-none cursor-pointer transition"
+                  >
+                    {cajasDisponibles.length === 0 && <option value="">Cargando cajas...</option>}
+                    {cajasDisponibles.map((caja) => (
+                      <option key={caja.id} value={caja.id}>{caja.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Nombre del cajero */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Tu nombre
+                </label>
+                <div className="relative">
+                  <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={formApertura.cajero_nombre}
+                    onChange={(e) => setFormApertura((prev) => ({ ...prev, cajero_nombre: e.target.value }))}
+                    placeholder="Ej: María García"
+                    autoFocus
+                    autoComplete="off"
+                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                  />
+                </div>
+              </div>
+
+              {/* Monto inicial */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Monto inicial en caja
+                </label>
+                <div className="relative">
+                  <DollarSign size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formApertura.monto_inicial}
+                    onChange={(e) => setFormApertura((prev) => ({ ...prev, monto_inicial: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isAbriendo || !formApertura.cajero_nombre.trim() || !formApertura.caja_id}
+                className={`
+                  w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 mt-2
+                  ${isAbriendo || !formApertura.cajero_nombre.trim() || !formApertura.caja_id
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-lg shadow-indigo-100 hover:shadow-indigo-200'
+                  }
+                `}
+              >
+                {isAbriendo
+                  ? <><Loader2 size={16} className="animate-spin" /> Abriendo caja...</>
+                  : <><Wallet size={16} /> Abrir Caja y Comenzar</>
+                }
+              </button>
+            </form>
+          </div>
+        </div>
+      </>
     );
   }
 
@@ -377,7 +391,21 @@ export default function Caja() {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full">
+    <>
+      {/* ── Bloque móvil ──────────────────────────────────────────────── */}
+      <div className="flex md:hidden flex-col items-center justify-center h-full bg-gray-50 text-center p-8 gap-5">
+        <div className="p-5 bg-red-50 rounded-full">
+          <MonitorX size={40} className="text-red-400" />
+        </div>
+        <div>
+          <h2 className="text-lg font-bold text-gray-700">Cobros no disponibles en móvil</h2>
+          <p className="text-sm text-gray-400 mt-2 max-w-xs leading-relaxed">
+            Por favor, dirigíte a la computadora de la caja física para cobrar y cerrar las comandas.
+          </p>
+        </div>
+      </div>
+      {/* ── Contenido desktop ────────────────────────────────────────── */}
+      <div className="hidden md:flex flex-col h-full">
 
       {/* ── Banner: turno activo ─────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-6 py-2.5 bg-emerald-600 text-white shrink-0">
@@ -793,6 +821,7 @@ export default function Caja() {
       </div>
 
       </div>
-    </div>
+      </div>{/* /hidden md:flex */}
+    </>
   );
 }

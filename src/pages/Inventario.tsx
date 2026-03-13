@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import {
   Search,
@@ -15,6 +15,8 @@ import {
   Tag,
   Barcode,
   Hash,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -25,6 +27,7 @@ interface Producto {
   codigo_barras?: string;
   precio_actual: number;
   stock: number;
+  activo?: boolean;
 }
 
 interface FormProducto {
@@ -83,6 +86,9 @@ export default function Inventario() {
   const [form, setForm] = useState<FormProducto>(FORM_VACIO);
   const [isGuardando, setIsGuardando] = useState(false);
   const [errorForm, setErrorForm] = useState<string | null>(null);
+
+  // Ref para mover el foco desde el lector de códigos al siguiente campo
+  const precioInputRef = useRef<HTMLInputElement>(null);
 
   // ── Fetch productos ──────────────────────────────────────────────────────
   const fetchProductos = useCallback(async () => {
@@ -202,6 +208,20 @@ export default function Inventario() {
     }
   };
 
+  // ── Toggle activo ("En caja") ──────────────────────────────────────────
+  const handleToggleActivo = async (producto: Producto) => {
+    try {
+      await axios.patch(`${API_BASE}/productos/${producto.id}/toggle-activo`);
+      setProductos((prev) =>
+        prev.map((p) =>
+          p.id === producto.id ? { ...p, activo: !(p.activo ?? true) } : p
+        )
+      );
+    } catch {
+      alert('❌ No se pudo cambiar el estado del producto. Intentá de nuevo.');
+    }
+  };
+
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
@@ -305,6 +325,9 @@ export default function Inventario() {
                   <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
                     Stock
                   </th>
+                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                    En Caja
+                  </th>
                   <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-6 py-3.5">
                     Acciones
                   </th>
@@ -313,8 +336,14 @@ export default function Inventario() {
               <tbody className="divide-y divide-gray-50">
                 {productos.map((producto) => {
                   const stockBajo = producto.stock < STOCK_BAJO;
+                  const activo = producto.activo ?? true;
                   return (
-                    <tr key={producto.id} className="hover:bg-gray-50 transition-colors group">
+                    <tr
+                      key={producto.id}
+                      className={`hover:bg-gray-50 transition-colors group ${
+                        !activo ? 'opacity-50 bg-gray-50' : ''
+                      }`}
+                    >
 
                       {/* Nombre */}
                       <td className="px-6 py-4">
@@ -358,6 +387,24 @@ export default function Inventario() {
                             {producto.stock}
                           </span>
                         )}
+                      </td>
+
+                      {/* En caja (toggle activo) */}
+                      <td className="px-4 py-4 text-center">
+                        <button
+                          onClick={() => handleToggleActivo(producto)}
+                          title={activo ? 'Pausar (ocultar del POS)' : 'Activar (mostrar en el POS)'}
+                          className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border transition-colors ${
+                            activo
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100'
+                              : 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-gray-200'
+                          }`}
+                        >
+                          {activo
+                            ? <Eye size={13} />
+                            : <EyeOff size={13} />
+                          }
+                        </button>
                       </td>
 
                       {/* Acciones */}
@@ -512,6 +559,12 @@ export default function Inventario() {
                     type="text"
                     value={form.codigo_barras}
                     onChange={(e) => handleCampo('codigo_barras', e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        precioInputRef.current?.focus();
+                      }
+                    }}
                     placeholder="Ej: 7798012345678"
                     className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition font-mono"
                   />
@@ -528,6 +581,7 @@ export default function Inventario() {
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none font-bold">$</span>
                     <input
+                      ref={precioInputRef}
                       type="number"
                       min="0"
                       step="0.01"
