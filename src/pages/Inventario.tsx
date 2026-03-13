@@ -1,0 +1,595 @@
+import { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+import {
+  Search,
+  Plus,
+  Edit,
+  Trash2,
+  AlertTriangle,
+  PackageSearch,
+  Loader2,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Package,
+  Tag,
+  Barcode,
+  Hash,
+} from 'lucide-react';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface Producto {
+  id: string;
+  nombre: string;
+  codigo_barras?: string;
+  precio_actual: number;
+  stock: number;
+}
+
+interface FormProducto {
+  nombre: string;
+  codigo_barras: string;
+  precio_actual: string;
+  stock: string;
+}
+
+interface MetaPaginacion {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+type ModoModal = 'crear' | 'editar';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const API_BASE = 'http://localhost:3000/api';
+const STOCK_BAJO = 5;
+const LIMIT = 15;
+
+const FORM_VACIO: FormProducto = {
+  nombre: '',
+  codigo_barras: '',
+  precio_actual: '',
+  stock: '',
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const formatPrecio = (valor: number) =>
+  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(valor);
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export default function Inventario() {
+  const [productos, setProductos] = useState<Producto[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busqueda, setBusqueda] = useState('');
+
+  // Paginación
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState<MetaPaginacion | null>(null);
+
+  // Búsqueda con debounce
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Modal
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [modoModal, setModoModal] = useState<ModoModal>('crear');
+  const [productoEditando, setProductoEditando] = useState<Producto | null>(null);
+  const [form, setForm] = useState<FormProducto>(FORM_VACIO);
+  const [isGuardando, setIsGuardando] = useState(false);
+  const [errorForm, setErrorForm] = useState<string | null>(null);
+
+  // ── Fetch productos ──────────────────────────────────────────────────────
+  const fetchProductos = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const { data } = await axios.get<{ data: Producto[]; meta: MetaPaginacion }>(
+        `${API_BASE}/productos`,
+        { params: { page, limit: LIMIT, ...(debouncedSearch && { search: debouncedSearch }) } }
+      );
+      setProductos(data.data);
+      setMeta(data.meta);
+    } catch {
+      setError('No se pudieron cargar los productos. Verificá que el servidor esté corriendo.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [page, debouncedSearch]);
+
+  useEffect(() => {
+    fetchProductos();
+  }, [fetchProductos]);
+
+  // Debounce: al cambiar la búsqueda, esperar 500ms y resetear a página 1
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1);
+      setDebouncedSearch(busqueda);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [busqueda]);
+
+  // ── Acciones modal ───────────────────────────────────────────────────────
+  const abrirModalCrear = () => {
+    setModoModal('crear');
+    setProductoEditando(null);
+    setForm(FORM_VACIO);
+    setErrorForm(null);
+    setModalAbierto(true);
+  };
+
+  const abrirModalEditar = (producto: Producto) => {
+    setModoModal('editar');
+    setProductoEditando(producto);
+    setForm({
+      nombre: producto.nombre,
+      codigo_barras: producto.codigo_barras ?? '',
+      precio_actual: String(producto.precio_actual),
+      stock: String(producto.stock),
+    });
+    setErrorForm(null);
+    setModalAbierto(true);
+  };
+
+  const cerrarModal = () => {
+    setModalAbierto(false);
+    setProductoEditando(null);
+    setForm(FORM_VACIO);
+    setErrorForm(null);
+  };
+
+  const handleCampo = (campo: keyof FormProducto, valor: string) =>
+    setForm((prev) => ({ ...prev, [campo]: valor }));
+
+  // ── Submit ───────────────────────────────────────────────────────────────
+  const handleGuardar = async () => {
+    if (!form.nombre.trim()) {
+      setErrorForm('El nombre del producto es obligatorio.');
+      return;
+    }
+    if (!form.precio_actual || isNaN(parseFloat(form.precio_actual))) {
+      setErrorForm('El precio debe ser un número válido.');
+      return;
+    }
+
+    const payload = {
+      nombre: form.nombre.trim(),
+      codigo_barras: form.codigo_barras.trim() || undefined,
+      precio_actual: parseFloat(form.precio_actual),
+      stock: form.stock ? parseInt(form.stock) : 0,
+    };
+
+    try {
+      setIsGuardando(true);
+      setErrorForm(null);
+
+      if (modoModal === 'crear') {
+        await axios.post(`${API_BASE}/productos`, payload);
+        alert('✅ Producto creado correctamente.');
+      } else if (productoEditando) {
+        await axios.put(`${API_BASE}/productos/${productoEditando.id}`, payload);
+        alert('✅ Producto actualizado correctamente.');
+      }
+
+      cerrarModal();
+      await fetchProductos();
+    } catch {
+      setErrorForm('Error al guardar el producto. Intentá de nuevo.');
+    } finally {
+      setIsGuardando(false);
+    }
+  };
+
+  // ── Eliminar ─────────────────────────────────────────────────────────────
+  const handleEliminar = async (producto: Producto) => {
+    const confirmar = window.confirm(
+      `¿Estás seguro de eliminar "${producto.nombre}"? Esta acción no se puede deshacer.`
+    );
+    if (!confirmar) return;
+
+    try {
+      await axios.delete(`${API_BASE}/productos/${producto.id}`);
+      alert(`🗑️ "${producto.nombre}" eliminado correctamente.`);
+      await fetchProductos();
+    } catch {
+      alert('❌ Error al eliminar el producto. Intentá de nuevo.');
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="flex flex-col h-full bg-gray-50">
+
+      {/* ── Cabecera ──────────────────────────────────────────────────────── */}
+      <div className="bg-white border-b border-gray-200 shadow-sm px-6 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-gray-800">Inventario</h1>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {!isLoading && meta && `${meta.total} producto${meta.total !== 1 ? 's' : ''} registrado${meta.total !== 1 ? 's' : ''}`}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 flex-1 max-w-md ml-auto">
+            {/* Búsqueda */}
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar por nombre o código..."
+                className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+              />
+            </div>
+
+            {/* Nuevo producto */}
+            <button
+              onClick={abrirModalCrear}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white text-sm font-bold shadow-sm shadow-emerald-100 transition-all shrink-0"
+            >
+              <Plus size={16} />
+              Nuevo Producto
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Tabla ─────────────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-auto p-6">
+
+        {/* Cargando */}
+        {isLoading && (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400">
+            <Loader2 size={36} className="animate-spin text-indigo-400" />
+            <p className="text-sm font-medium">Cargando inventario...</p>
+          </div>
+        )}
+
+        {/* Error */}
+        {!isLoading && error && (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
+            <PackageSearch size={48} className="text-red-300" />
+            <p className="text-sm text-red-500 font-medium max-w-xs">{error}</p>
+            <button
+              onClick={fetchProductos}
+              className="text-xs text-indigo-500 hover:underline font-medium"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
+
+        {/* Sin resultados de búsqueda */}
+        {!isLoading && !error && productos.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400">
+            <PackageSearch size={48} className="text-gray-300" />
+            <p className="text-sm font-medium">
+              {busqueda ? `Sin resultados para "${busqueda}"` : 'No hay productos cargados aún.'}
+            </p>
+            {!busqueda && (
+              <button
+                onClick={abrirModalCrear}
+                className="text-xs text-emerald-500 hover:underline font-semibold"
+              >
+                + Crear el primer producto
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Tabla de productos */}
+        {!isLoading && !error && productos.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-6 py-3.5">
+                    Nombre
+                  </th>
+                  <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                    Código de Barras
+                  </th>
+                  <th className="text-right text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                    Precio Actual
+                  </th>
+                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                    Stock
+                  </th>
+                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-6 py-3.5">
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {productos.map((producto) => {
+                  const stockBajo = producto.stock < STOCK_BAJO;
+                  return (
+                    <tr key={producto.id} className="hover:bg-gray-50 transition-colors group">
+
+                      {/* Nombre */}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-1.5 bg-indigo-50 rounded-lg shrink-0">
+                            <Package size={14} className="text-indigo-500" />
+                          </div>
+                          <p className="font-semibold text-gray-800">{producto.nombre}</p>
+                        </div>
+                      </td>
+
+                      {/* Código de barras */}
+                      <td className="px-4 py-4">
+                        {producto.codigo_barras ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
+                            <Barcode size={11} className="text-gray-400" />
+                            {producto.codigo_barras}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
+                      </td>
+
+                      {/* Precio */}
+                      <td className="px-4 py-4 text-right">
+                        <span className="font-bold text-gray-800">
+                          {formatPrecio(producto.precio_actual)}
+                        </span>
+                      </td>
+
+                      {/* Stock */}
+                      <td className="px-4 py-4 text-center">
+                        {stockBajo ? (
+                          <span className="inline-flex items-center gap-1.5 bg-red-50 text-red-500 text-xs font-bold px-2.5 py-1 rounded-full border border-red-200">
+                            <AlertTriangle size={11} />
+                            {producto.stock}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-bold px-2.5 py-1 rounded-full border border-emerald-200">
+                            <Hash size={10} />
+                            {producto.stock}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Acciones */}
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => abrirModalEditar(producto)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 hover:border-indigo-200 transition-colors"
+                          >
+                            <Edit size={12} />
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => handleEliminar(producto)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 border border-red-100 hover:border-red-200 transition-colors"
+                          >
+                            <Trash2 size={12} />
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {/* Pie de tabla — paginación */}
+            <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-4">
+                {meta && (
+                  <p className="text-xs text-gray-400">
+                    Mostrando página{' '}
+                    <span className="font-semibold text-gray-600">{meta.page}</span> de{' '}
+                    <span className="font-semibold text-gray-600">{meta.totalPages}</span>
+                    {' '}(Total:{' '}
+                    <span className="font-semibold text-gray-600">{meta.total}</span> productos)
+                  </p>
+                )}
+                {productos.some((p) => p.stock < STOCK_BAJO) && (
+                  <div className="flex items-center gap-1.5 text-xs text-red-400 font-medium">
+                    <AlertTriangle size={12} />
+                    Hay productos con stock bajo ({STOCK_BAJO} unidades o menos)
+                  </div>
+                )}
+              </div>
+
+              {meta && meta.totalPages > 1 && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setPage((p) => p - 1)}
+                    disabled={page === 1}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft size={13} />
+                    Anterior
+                  </button>
+                  <span className="text-xs font-bold text-gray-700 min-w-[2rem] text-center">
+                    {page} / {meta.totalPages}
+                  </span>
+                  <button
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={page === meta.totalPages}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Siguiente
+                    <ChevronRight size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          MODAL — Crear / Editar Producto
+      ══════════════════════════════════════════════════════════════════════ */}
+      {modalAbierto && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) cerrarModal(); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+
+            {/* Header del modal */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-50 rounded-xl">
+                  {modoModal === 'crear' ? (
+                    <Plus size={16} className="text-indigo-600" />
+                  ) : (
+                    <Edit size={16} className="text-indigo-600" />
+                  )}
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-800">
+                    {modoModal === 'crear' ? 'Nuevo Producto' : 'Editar Producto'}
+                  </h2>
+                  {modoModal === 'editar' && productoEditando && (
+                    <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]">
+                      {productoEditando.nombre}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={cerrarModal}
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Cuerpo del modal */}
+            <div className="px-6 py-5 space-y-4">
+
+              {/* Error de formulario */}
+              {errorForm && (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 text-xs font-medium px-3 py-2.5 rounded-lg">
+                  <AlertTriangle size={13} />
+                  {errorForm}
+                </div>
+              )}
+
+              {/* Nombre */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Nombre <span className="text-red-400">*</span>
+                </label>
+                <div className="relative">
+                  <Tag size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={form.nombre}
+                    onChange={(e) => handleCampo('nombre', e.target.value)}
+                    placeholder="Ej: Cuaderno A4 tapa dura"
+                    autoFocus
+                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                  />
+                </div>
+              </div>
+
+              {/* Código de barras */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Código de Barras <span className="text-gray-300 font-normal normal-case">(opcional)</span>
+                </label>
+                <div className="relative">
+                  <Barcode size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={form.codigo_barras}
+                    onChange={(e) => handleCampo('codigo_barras', e.target.value)}
+                    placeholder="Ej: 7798012345678"
+                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Precio y Stock en fila */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Precio */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                    Precio <span className="text-red-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none font-bold">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.precio_actual}
+                      onChange={(e) => handleCampo('precio_actual', e.target.value)}
+                      placeholder="0.00"
+                      className="w-full pl-7 pr-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Stock */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                    Stock <span className="text-red-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <Hash size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={form.stock}
+                      onChange={(e) => handleCampo('stock', e.target.value)}
+                      placeholder="0"
+                      className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer del modal */}
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <button
+                onClick={cerrarModal}
+                disabled={isGuardando}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleGuardar}
+                disabled={isGuardando}
+                className={`
+                  flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200
+                  ${isGuardando
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-md shadow-indigo-100'
+                  }
+                `}
+              >
+                {isGuardando ? (
+                  <><Loader2 size={15} className="animate-spin" /> Guardando...</>
+                ) : (
+                  modoModal === 'crear' ? 'Crear Producto' : 'Guardar Cambios'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
