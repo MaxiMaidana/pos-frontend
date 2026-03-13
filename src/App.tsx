@@ -1,8 +1,9 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
-import { ShoppingCart, Wallet, PackageOpen } from 'lucide-react';
+import { ShoppingCart, Wallet, PackageOpen, BarChart3 } from 'lucide-react';
 import NuevaVenta from './pages/NuevaVenta';
 import Caja from './pages/Caja';
 import Inventario from './pages/Inventario';
+import Dashboard from './pages/Dashboard';
 
 function App() {
   return (
@@ -29,6 +30,10 @@ function App() {
               <PackageOpen size={20} />
               Inventario
             </Link>
+            <Link to="/dashboard" className="flex items-center gap-3 p-3 rounded-lg text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all font-medium">
+              <BarChart3 size={20} />
+              Dashboard
+            </Link>
           </nav>
         </aside>
 
@@ -38,6 +43,7 @@ function App() {
             <Route path="/" element={<NuevaVenta />} />
             <Route path="/caja" element={<Caja />} />
             <Route path="/inventario" element={<Inventario />} />
+            <Route path="/dashboard" element={<Dashboard />} />
           </Routes>
         </main>
 

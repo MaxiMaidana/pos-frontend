@@ -50,6 +50,7 @@ interface SesionCaja {
   abierta: boolean;
   cajero: string;
   caja_id: string;
+  sesion_id?: string;
 }
 
 interface CajaDisponible {
@@ -198,7 +199,10 @@ export default function Caja() {
 
     try {
       setIsSubmitting(true);
-      await axios.delete(`${API_BASE}/ventas/${seleccionada.id}`);
+      await axios.patch(`${API_BASE}/ventas/${seleccionada.id}`, {
+        estado: 'ANULADA',
+        sesion_id: sesion?.sesion_id,
+      });
       alert('🗑️ Comanda anulada. El stock fue repuesto.');
       setSeleccionada(null);
       resetPagos();
@@ -215,7 +219,7 @@ export default function Caja() {
     if (!formApertura.cajero_nombre.trim() || !formApertura.caja_id) return;
     try {
       setIsAbriendo(true);
-      await axios.post(`${API_BASE}/caja/abrir`, {
+      const { data: sesionData } = await axios.post<{ sesion_id?: string }>(`${API_BASE}/caja/abrir`, {
         caja_id: formApertura.caja_id,
         cajero_nombre: formApertura.cajero_nombre.trim(),
         monto_inicial: parseFloat(formApertura.monto_inicial) || 0,
@@ -224,6 +228,7 @@ export default function Caja() {
         abierta: true,
         cajero: formApertura.cajero_nombre.trim(),
         caja_id: formApertura.caja_id,
+        sesion_id: sesionData?.sesion_id,
       };
       localStorage.setItem('sesion_caja', JSON.stringify(nuevaSesion));
       setSesion(nuevaSesion);
