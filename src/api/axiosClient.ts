@@ -1,9 +1,8 @@
 import axios from 'axios';
-
 // ─── Instancia centralizada ───────────────────────────────────────────────────
 
 const api = axios.create({
-  baseURL: 'http://localhost:3000/api',
+  baseURL: 'http://192.168.0.20:3000/api',
   headers: { 'Content-Type': 'application/json' },
 });
 

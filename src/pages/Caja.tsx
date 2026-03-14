@@ -61,7 +61,6 @@ interface CajaDisponible {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const API_BASE = 'http://localhost:3000/api';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -100,7 +99,7 @@ export default function Caja() {
     try {
       setIsLoading(true);
       setErrorLista(null);
-      const { data } = await api.get<Venta[]>(`${API_BASE}/ventas`);
+      const { data } = await api.get<Venta[]>(`/ventas`);
       setVentas(data.filter((v) => v.estado === 'PENDIENTE'));
     } catch {
       setErrorLista('No se pudieron cargar las comandas. Verificá que el servidor esté corriendo.');
@@ -128,7 +127,7 @@ export default function Caja() {
   // ── Fetch cajas disponibles (solo cuando no hay sesión) ──────────────────
   const fetchCajas = useCallback(async () => {
     try {
-      const { data } = await api.get<CajaDisponible[]>(`${API_BASE}/caja`);
+      const { data } = await api.get<CajaDisponible[]>(`/caja`);
       setCajasDisponibles(data);
       if (data.length > 0) {
         setFormApertura((prev) => ({ ...prev, caja_id: data[0].id }));
@@ -180,7 +179,7 @@ export default function Caja() {
 
     try {
       setIsSubmitting(true);
-      await api.post(`${API_BASE}/ventas/${seleccionada.id}/cobrar`, payload);
+      await api.post(`/ventas/${seleccionada.id}/cobrar`, payload);
       alert('¡Cobro registrado con éxito!');
       setSeleccionada(null);
       resetPagos();
@@ -200,7 +199,7 @@ export default function Caja() {
 
     try {
       setIsSubmitting(true);
-      await api.patch(`${API_BASE}/ventas/${seleccionada.id}`, {
+      await api.patch(`/ventas/${seleccionada.id}`, {
         estado: 'ANULADA',
         sesion_id: sesion?.sesion_id,
       });
@@ -220,7 +219,7 @@ export default function Caja() {
     if (!formApertura.cajero_nombre.trim() || !formApertura.caja_id) return;
     try {
       setIsAbriendo(true);
-      const { data: sesionData } = await api.post<{ sesion_id?: string }>(`${API_BASE}/caja/abrir`, {
+      const { data: sesionData } = await api.post<{ sesion_id?: string }>(`/caja/abrir`, {
         caja_id: formApertura.caja_id,
         cajero_nombre: formApertura.cajero_nombre.trim(),
         monto_inicial: parseFloat(formApertura.monto_inicial) || 0,
@@ -254,7 +253,7 @@ export default function Caja() {
     }
     try {
       setIsSubmitting(true);
-      await api.post(`${API_BASE}/caja/${sesion.caja_id}/cerrar`, { monto_efectivo_cierre });
+      await api.post(`/caja/${sesion.caja_id}/cerrar`, { monto_efectivo_cierre });
       localStorage.removeItem('sesion_caja');
       setSesion(null);
       setSeleccionada(null);

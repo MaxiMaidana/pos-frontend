@@ -48,7 +48,6 @@ type ModoModal = 'crear' | 'editar';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const API_BASE = 'http://localhost:3000/api';
 const STOCK_BAJO = 5;
 const LIMIT = 15;
 
@@ -96,7 +95,7 @@ export default function Inventario() {
       setIsLoading(true);
       setError(null);
       const { data } = await api.get<{ data: Producto[]; meta: MetaPaginacion }>(
-        `${API_BASE}/productos`,
+        `/productos`,
         { params: { page, limit: LIMIT, ...(debouncedSearch && { search: debouncedSearch }) } }
       );
       setProductos(data.data);
@@ -176,10 +175,10 @@ export default function Inventario() {
       setErrorForm(null);
 
       if (modoModal === 'crear') {
-        await api.post(`${API_BASE}/productos`, payload);
+        await api.post(`/productos`, payload);
         alert('✅ Producto creado correctamente.');
       } else if (productoEditando) {
-        await api.put(`${API_BASE}/productos/${productoEditando.id}`, payload);
+        await api.put(`/productos/${productoEditando.id}`, payload);
         alert('✅ Producto actualizado correctamente.');
       }
 
@@ -200,7 +199,7 @@ export default function Inventario() {
     if (!confirmar) return;
 
     try {
-      await api.delete(`${API_BASE}/productos/${producto.id}`);
+      await api.delete(`/productos/${producto.id}`);
       alert(`🗑️ "${producto.nombre}" eliminado correctamente.`);
       await fetchProductos();
     } catch {
@@ -211,7 +210,7 @@ export default function Inventario() {
   // ── Toggle activo ("En caja") ──────────────────────────────────────────
   const handleToggleActivo = async (producto: Producto) => {
     try {
-      await api.patch(`${API_BASE}/productos/${producto.id}/toggle-activo`);
+      await api.patch(`/productos/${producto.id}/toggle-activo`);
       setProductos((prev) =>
         prev.map((p) =>
           p.id === producto.id ? { ...p, activo: !(p.activo ?? true) } : p

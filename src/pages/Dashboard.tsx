@@ -92,7 +92,6 @@ interface ProductoStock {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const API_BASE = 'http://localhost:3000/api';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -178,8 +177,8 @@ export default function Dashboard() {
         setAnaliticas({ rendimientoVendedores: [], reporteCajas: [] });
 
         const [statsRes, analiticasRes] = await Promise.all([
-          api.get<Stats>(`${API_BASE}/dashboard/stats`, { params: { fecha } }),
-          api.get<Analiticas>(`${API_BASE}/dashboard/analiticas`, { params: { fecha } }),
+          api.get<Stats>(`/dashboard/stats`, { params: { fecha } }),
+          api.get<Analiticas>(`/dashboard/analiticas`, { params: { fecha } }),
         ]);
 
         if (!cancelled) {
@@ -205,7 +204,7 @@ export default function Dashboard() {
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      await api.post(`${API_BASE}/sync/manual`);
+      await api.post(`/sync/manual`);
       alert('✅ Sincronización completada con éxito.');
     } catch {
       alert('❌ Error al sincronizar. Verificá la conexión con el servidor.');
@@ -235,7 +234,7 @@ export default function Dashboard() {
     try {
       if (tipo === 'stock') {
         setModalTipo('stock');
-        const { data } = await api.get<ProductoStock[]>(`${API_BASE}/productos`, {
+        const { data } = await api.get<ProductoStock[]>(`/productos`, {
           params: { stockBajo: true },
         });
         setProductosStock(Array.isArray(data) ? data : (data as { data?: ProductoStock[] }).data ?? []);
@@ -245,7 +244,7 @@ export default function Dashboard() {
           tipo === 'vendedor' ? { fecha, vendedor_nombre: id }
           : tipo === 'ventas_estado' ? { fecha, estado: id }
           : { fecha, sesion_id: id };
-        const { data } = await api.get<VentaDetalle[]>(`${API_BASE}/ventas`, { params });
+        const { data } = await api.get<VentaDetalle[]>(`/ventas`, { params });
         setVentasDetalle(Array.isArray(data) ? data : (data as { data?: VentaDetalle[] }).data ?? []);
       }
     } catch {

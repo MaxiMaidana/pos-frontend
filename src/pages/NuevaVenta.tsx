@@ -42,7 +42,6 @@ interface MetaPaginacion {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const API_BASE = 'http://localhost:3000/api';
 const LIMIT = 15;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -78,12 +77,17 @@ export default function NuevaVenta() {
       setIsLoading(true);
       setErrorCatalogo(null);
       const { data } = await api.get<{ data: Producto[]; meta: MetaPaginacion }>(
-        `${API_BASE}/productos`,
+        `/productos`,
         { params: { page, limit: LIMIT, soloActivos: true, ...(debouncedSearch && { search: debouncedSearch }) } }
       );
       setProductos(data.data);
       setMeta(data.meta);
-    } catch {
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        alert('Error en el  celu: ' + error.message);
+      } else {
+        alert('Error en el  celu: Error desconocido');
+      }
       setErrorCatalogo('No se pudieron cargar los productos. Verificá que el servidor esté corriendo.');
     } finally {
       setIsLoading(false);
@@ -199,7 +203,7 @@ export default function NuevaVenta() {
 
     try {
       setIsSubmitting(true);
-      await api.post(`${API_BASE}/ventas`, payload);
+      await api.post(`/ventas`, payload);
       alert('✅ Comanda enviada a la caja');
       setCarrito([]);
       await fetchProductos();
