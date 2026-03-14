@@ -1,8 +1,9 @@
 import axios from 'axios';
 // ─── Instancia centralizada ───────────────────────────────────────────────────
 
+const apiURL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3000/api`;
 const api = axios.create({
-  baseURL: 'http://192.168.0.20:3000/api',
+  baseURL: apiURL,
   headers: { 'Content-Type': 'application/json' },
 });
 
