@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api/axiosClient';
 import {
   DollarSign,
   ShoppingBag,
@@ -178,8 +178,8 @@ export default function Dashboard() {
         setAnaliticas({ rendimientoVendedores: [], reporteCajas: [] });
 
         const [statsRes, analiticasRes] = await Promise.all([
-          axios.get<Stats>(`${API_BASE}/dashboard/stats`, { params: { fecha } }),
-          axios.get<Analiticas>(`${API_BASE}/dashboard/analiticas`, { params: { fecha } }),
+          api.get<Stats>(`${API_BASE}/dashboard/stats`, { params: { fecha } }),
+          api.get<Analiticas>(`${API_BASE}/dashboard/analiticas`, { params: { fecha } }),
         ]);
 
         if (!cancelled) {
@@ -205,7 +205,7 @@ export default function Dashboard() {
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      await axios.post(`${API_BASE}/sync/manual`);
+      await api.post(`${API_BASE}/sync/manual`);
       alert('✅ Sincronización completada con éxito.');
     } catch {
       alert('❌ Error al sincronizar. Verificá la conexión con el servidor.');
@@ -235,7 +235,7 @@ export default function Dashboard() {
     try {
       if (tipo === 'stock') {
         setModalTipo('stock');
-        const { data } = await axios.get<ProductoStock[]>(`${API_BASE}/productos`, {
+        const { data } = await api.get<ProductoStock[]>(`${API_BASE}/productos`, {
           params: { stockBajo: true },
         });
         setProductosStock(Array.isArray(data) ? data : (data as { data?: ProductoStock[] }).data ?? []);
@@ -245,7 +245,7 @@ export default function Dashboard() {
           tipo === 'vendedor' ? { fecha, vendedor_nombre: id }
           : tipo === 'ventas_estado' ? { fecha, estado: id }
           : { fecha, sesion_id: id };
-        const { data } = await axios.get<VentaDetalle[]>(`${API_BASE}/ventas`, { params });
+        const { data } = await api.get<VentaDetalle[]>(`${API_BASE}/ventas`, { params });
         setVentasDetalle(Array.isArray(data) ? data : (data as { data?: VentaDetalle[] }).data ?? []);
       }
     } catch {

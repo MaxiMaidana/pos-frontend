@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import axios from 'axios';
+import api from '../api/axiosClient';
 import {
   Search,
   ShoppingCart,
@@ -77,7 +77,7 @@ export default function NuevaVenta() {
     try {
       setIsLoading(true);
       setErrorCatalogo(null);
-      const { data } = await axios.get<{ data: Producto[]; meta: MetaPaginacion }>(
+      const { data } = await api.get<{ data: Producto[]; meta: MetaPaginacion }>(
         `${API_BASE}/productos`,
         { params: { page, limit: LIMIT, soloActivos: true, ...(debouncedSearch && { search: debouncedSearch }) } }
       );
@@ -199,7 +199,7 @@ export default function NuevaVenta() {
 
     try {
       setIsSubmitting(true);
-      await axios.post(`${API_BASE}/ventas`, payload);
+      await api.post(`${API_BASE}/ventas`, payload);
       alert('✅ Comanda enviada a la caja');
       setCarrito([]);
       await fetchProductos();

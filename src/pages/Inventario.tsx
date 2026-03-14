@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import axios from 'axios';
+import api from '../api/axiosClient';
 import {
   Search,
   Plus,
@@ -95,7 +95,7 @@ export default function Inventario() {
     try {
       setIsLoading(true);
       setError(null);
-      const { data } = await axios.get<{ data: Producto[]; meta: MetaPaginacion }>(
+      const { data } = await api.get<{ data: Producto[]; meta: MetaPaginacion }>(
         `${API_BASE}/productos`,
         { params: { page, limit: LIMIT, ...(debouncedSearch && { search: debouncedSearch }) } }
       );
@@ -176,10 +176,10 @@ export default function Inventario() {
       setErrorForm(null);
 
       if (modoModal === 'crear') {
-        await axios.post(`${API_BASE}/productos`, payload);
+        await api.post(`${API_BASE}/productos`, payload);
         alert('✅ Producto creado correctamente.');
       } else if (productoEditando) {
-        await axios.put(`${API_BASE}/productos/${productoEditando.id}`, payload);
+        await api.put(`${API_BASE}/productos/${productoEditando.id}`, payload);
         alert('✅ Producto actualizado correctamente.');
       }
 
@@ -200,7 +200,7 @@ export default function Inventario() {
     if (!confirmar) return;
 
     try {
-      await axios.delete(`${API_BASE}/productos/${producto.id}`);
+      await api.delete(`${API_BASE}/productos/${producto.id}`);
       alert(`🗑️ "${producto.nombre}" eliminado correctamente.`);
       await fetchProductos();
     } catch {
@@ -211,7 +211,7 @@ export default function Inventario() {
   // ── Toggle activo ("En caja") ──────────────────────────────────────────
   const handleToggleActivo = async (producto: Producto) => {
     try {
-      await axios.patch(`${API_BASE}/productos/${producto.id}/toggle-activo`);
+      await api.patch(`${API_BASE}/productos/${producto.id}/toggle-activo`);
       setProductos((prev) =>
         prev.map((p) =>
           p.id === producto.id ? { ...p, activo: !(p.activo ?? true) } : p

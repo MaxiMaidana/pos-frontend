@@ -7,15 +7,12 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
+  Loader2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import api from '../api/axiosClient';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const PASSWORDS = {
-  empleado: 'empleado123',
-  admin: 'edge2026',
-};
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -37,6 +34,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleTabChange = (next: Tab) => {
     setTab(next);
@@ -44,24 +42,32 @@ export default function Login() {
     setError(null);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setError(null);
-    if (tab === 'admin') {
-      if (password === PASSWORDS.admin) {
+    setIsLoading(true);
+    try {
+      const { data } = await api.post<{ token: string }>('/auth/login', {
+        rol: tab === 'admin' ? 'ADMIN' : 'EMPLEADO',
+        password,
+      });
+      localStorage.setItem('token', data.token);
+      if (tab === 'admin') {
         loginAdmin();
         navigate('/dashboard');
       } else {
-        setError('Contraseña incorrecta. Intentá de nuevo.');
-        setPassword('');
-      }
-    } else {
-      if (password === PASSWORDS.empleado) {
         loginEmpleado();
         navigate('/');
-      } else {
-        setError('Contraseña incorrecta. Intentá de nuevo.');
-        setPassword('');
       }
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } }).response?.status;
+      setError(
+        status === 401
+          ? 'Contraseña incorrecta. Intentá de nuevo.'
+          : 'Error al conectar con el servidor. Verificá tu conexión.'
+      );
+      setPassword('');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -159,12 +165,12 @@ export default function Login() {
 
           <button
             type="submit"
-            disabled={!password}
+            disabled={!password || isLoading}
             className={`
               w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2
               transition-all duration-200 mt-2
               ${
-                !password
+                !password || isLoading
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   : tab === 'admin'
                     ? 'bg-violet-600 hover:bg-violet-700 active:scale-[0.98] text-white shadow-lg shadow-violet-100'
@@ -172,9 +178,11 @@ export default function Login() {
               }
             `}
           >
-            {tab === 'admin'
-              ? <><ShieldCheck size={16} /> Entrar como Administrador</>
-              : <><UserCheck size={16} /> Entrar como Empleado <ArrowRight size={15} /></>
+            {isLoading
+              ? <><Loader2 size={16} className="animate-spin" /> Verificando...</>
+              : tab === 'admin'
+                ? <><ShieldCheck size={16} /> Entrar como Administrador</>
+                : <><UserCheck size={16} /> Entrar como Empleado <ArrowRight size={15} /></>
             }
           </button>
         </form>
