@@ -20,6 +20,7 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AdminRoute, EmpleadoRoute, SharedRoute } from './components/ProtectedRoute';
+import { isWebMode } from './utils/env';
 
 // ─── Nav items ────────────────────────────────────────────────────────────────
 
@@ -244,7 +245,7 @@ function AppContent() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const isAuth = rol !== null;
-  const navItems = rol === 'ADMIN' ? NAV_ITEMS_ADMIN : NAV_ITEMS_CAJERO;
+  const navItems = (rol === 'ADMIN' || isWebMode) ? NAV_ITEMS_ADMIN : NAV_ITEMS_CAJERO;
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans overflow-hidden">
@@ -307,8 +308,8 @@ function AppContent() {
         <main className="flex-1 overflow-auto">
           <Routes>
             <Route path="/login"      element={<Login />}                                        />
-            <Route path="/"           element={<EmpleadoRoute><NuevaVenta /></EmpleadoRoute>}      />
-            <Route path="/caja"       element={<EmpleadoRoute><Caja /></EmpleadoRoute>}            />
+            <Route path="/"           element={isWebMode ? <Navigate to="/dashboard" replace /> : <EmpleadoRoute><NuevaVenta /></EmpleadoRoute>}      />
+            <Route path="/caja"       element={isWebMode ? <Navigate to="/dashboard" replace /> : <EmpleadoRoute><Caja /></EmpleadoRoute>}            />
             <Route path="/inventario" element={<SharedRoute><Inventario /></SharedRoute>}         />
             <Route path="/dashboard"  element={<AdminRoute><Dashboard /></AdminRoute>}           />
             <Route path="*"           element={<Navigate to="/login" replace />}                 />

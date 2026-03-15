@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api/axiosClient';
+import { isWebMode } from '../utils/env';
 import {
   Search,
   Plus,
@@ -252,13 +253,15 @@ export default function Inventario() {
             </div>
 
             {/* Nuevo producto */}
-            <button
-              onClick={abrirModalCrear}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white text-sm font-bold shadow-sm shadow-emerald-100 transition-all shrink-0"
-            >
-              <Plus size={16} />
-              Nuevo Producto
-            </button>
+            {!isWebMode && (
+              <button
+                onClick={abrirModalCrear}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white text-sm font-bold shadow-sm shadow-emerald-100 transition-all shrink-0"
+              >
+                <Plus size={16} />
+                Nuevo Producto
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -295,7 +298,7 @@ export default function Inventario() {
             <p className="text-sm font-medium">
               {busqueda ? `Sin resultados para "${busqueda}"` : 'No hay productos cargados aún.'}
             </p>
-            {!busqueda && (
+            {!isWebMode && !busqueda && (
               <button
                 onClick={abrirModalCrear}
                 className="text-xs text-emerald-500 hover:underline font-semibold"
@@ -324,12 +327,16 @@ export default function Inventario() {
                   <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
                     Stock
                   </th>
-                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
-                    En Caja
-                  </th>
-                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-6 py-3.5">
-                    Acciones
-                  </th>
+                  {!isWebMode && (
+                    <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                      En Caja
+                    </th>
+                  )}
+                  {!isWebMode && (
+                    <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-6 py-3.5">
+                      Acciones
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -389,42 +396,46 @@ export default function Inventario() {
                       </td>
 
                       {/* En caja (toggle activo) */}
-                      <td className="px-4 py-4 text-center">
-                        <button
-                          onClick={() => handleToggleActivo(producto)}
-                          title={activo ? 'Pausar (ocultar del POS)' : 'Activar (mostrar en el POS)'}
-                          className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border transition-colors ${
-                            activo
-                              ? 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100'
-                              : 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-gray-200'
-                          }`}
-                        >
-                          {activo
-                            ? <Eye size={13} />
-                            : <EyeOff size={13} />
-                          }
-                        </button>
-                      </td>
+                      {!isWebMode && (
+                        <td className="px-4 py-4 text-center">
+                          <button
+                            onClick={() => handleToggleActivo(producto)}
+                            title={activo ? 'Pausar (ocultar del POS)' : 'Activar (mostrar en el POS)'}
+                            className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border transition-colors ${
+                              activo
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100'
+                                : 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-gray-200'
+                            }`}
+                          >
+                            {activo
+                              ? <Eye size={13} />
+                              : <EyeOff size={13} />
+                            }
+                          </button>
+                        </td>
+                      )}
 
                       {/* Acciones */}
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => abrirModalEditar(producto)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 hover:border-indigo-200 transition-colors"
-                          >
-                            <Edit size={12} />
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => handleEliminar(producto)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 border border-red-100 hover:border-red-200 transition-colors"
-                          >
-                            <Trash2 size={12} />
-                            Eliminar
-                          </button>
-                        </div>
-                      </td>
+                      {!isWebMode && (
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => abrirModalEditar(producto)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 hover:border-indigo-200 transition-colors"
+                            >
+                              <Edit size={12} />
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => handleEliminar(producto)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 border border-red-100 hover:border-red-200 transition-colors"
+                            >
+                              <Trash2 size={12} />
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

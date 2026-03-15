@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axiosClient';
+import { isWebMode } from '../utils/env';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ export default function Login() {
     if (rol === 'EMPLEADO') navigate('/', { replace: true });
   }, [rol, navigate]);
 
-  const [tab, setTab] = useState<Tab>('empleado');
+  const [tab, setTab] = useState<Tab>(isWebMode ? 'admin' : 'empleado');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,28 +92,30 @@ export default function Login() {
         </div>
 
         {/* Tabs */}
-        <div className="flex rounded-xl bg-gray-100 p-1 mb-5">
-          <button
-            onClick={() => handleTabChange('empleado')}
-            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
-              tab === 'empleado'
-                ? 'bg-white text-indigo-600 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Empleado
-          </button>
-          <button
-            onClick={() => handleTabChange('admin')}
-            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
-              tab === 'admin'
-                ? 'bg-white text-indigo-600 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Administrador
-          </button>
-        </div>
+        {!isWebMode && (
+          <div className="flex rounded-xl bg-gray-100 p-1 mb-5">
+            <button
+              onClick={() => handleTabChange('empleado')}
+              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
+                tab === 'empleado'
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Empleado
+            </button>
+            <button
+              onClick={() => handleTabChange('admin')}
+              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
+                tab === 'admin'
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Administrador
+            </button>
+          </div>
+        )}
 
         {/* Descripción del modo */}
         <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl mb-5 text-xs font-medium ${
