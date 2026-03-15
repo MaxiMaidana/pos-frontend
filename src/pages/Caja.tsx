@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/axiosClient';
+import { RECARGOS_CREDITO, CUOTAS_CREDITO } from '../utils/constants';
 import {
   Wallet,
   User,
@@ -11,13 +12,14 @@ import {
   ChevronRight,
   RefreshCw,
   Plus,
-  Trash2,
+  Trash2, 
   XCircle,
   LogOut,
   Lock,
   MonitorX,
   Building2,
   DollarSign,
+  Info,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -30,9 +32,13 @@ interface DetalleVenta {
   precio_unitario_historico: number;
 }
 
+type TipoTarjeta = 'DEBITO' | 'CREDITO';
+
 interface LineaPago {
   metodo: MetodoPago;
   monto: string;
+  tipoTarjeta?: TipoTarjeta;
+  cuotas?: number;
 }
 
 interface Venta {
@@ -144,6 +150,27 @@ export default function Caja() {
   // ── Helpers de líneas de pago ─────────────────────────────────────────────
   const resetPagos = () => setPagos([{ metodo: 'EFECTIVO', monto: '' }]);
 
+  const cambiarMetodo = (idx: number, metodo: MetodoPago) =>
+    setPagos((prev) =>
+      prev.map((p, i) =>
+        i === idx
+          ? { ...p, metodo, tipoTarjeta: metodo === 'TARJETA' ? 'DEBITO' : undefined, cuotas: undefined }
+          : p
+      )
+    );
+
+  const cambiarTipoTarjeta = (idx: number, tipo: TipoTarjeta) =>
+    setPagos((prev) =>
+      prev.map((p, i) =>
+        i === idx ? { ...p, tipoTarjeta: tipo, cuotas: tipo === 'DEBITO' ? undefined : p.cuotas } : p
+      )
+    );
+
+  const cambiarCuotas = (idx: number, cuotas: number) =>
+    setPagos((prev) =>
+      prev.map((p, i) => (i === idx ? { ...p, cuotas: cuotas || undefined } : p))
+    );
+
   const agregarLinea = () =>
     setPagos((prev) => {
       if (prev.length === 1) {
@@ -172,9 +199,36 @@ export default function Caja() {
   const handleCobrar = async () => {
     if (!seleccionada || !sesion) return;
 
+    // Calcular recargo: cada línea de crédito recarga solo su propio monto
+    const baseTotal = calcularTotal(seleccionada);
+    const recargoCobro = pagos.reduce((acc, p) => {
+      if (p.metodo === 'TARJETA' && p.tipoTarjeta === 'CREDITO' && p.cuotas) {
+        const base = pagos.length === 1 ? baseTotal : (parseFloat(p.monto) || 0);
+        return acc + base * (RECARGOS_CREDITO[p.cuotas] ?? 0);
+      }
+      return acc;
+    }, 0);
+    const totalFinalCobro = baseTotal + recargoCobro;
+
+    // Resuelve el método que espera el backend según el tipo de tarjeta
+    const resolverMetodo = (p: LineaPago): string => {
+      if (p.metodo !== 'TARJETA') return p.metodo;
+      return p.tipoTarjeta === 'CREDITO' ? 'TARJETA_CREDITO' : 'TARJETA_DEBITO';
+    };
+
     const payload = {
       caja_id: sesion.caja_id,
-      pagos: pagos.map((p) => ({ metodo: p.metodo, monto: parseFloat(p.monto) || 0 })),
+      pagos:
+        pagos.length === 1
+          ? [{ metodo: resolverMetodo(pagos[0]), monto: totalFinalCobro, cuotas: pagos[0].cuotas }]
+          : pagos.map((p) => ({
+              metodo: resolverMetodo(p),
+              monto:
+                p.metodo === 'TARJETA' && p.tipoTarjeta === 'CREDITO' && p.cuotas
+                  ? (parseFloat(p.monto) || 0) * (1 + (RECARGOS_CREDITO[p.cuotas] ?? 0))
+                  : parseFloat(p.monto) || 0,
+              cuotas: p.cuotas,
+            })),
     };
 
     try {
@@ -587,6 +641,16 @@ export default function Caja() {
         {/* Detalle de la comanda seleccionada */}
         {seleccionada && (() => {
           const total = calcularTotal(seleccionada);
+          // Recargo absoluto: se aplica solo al monto de cada línea de crédito
+          const montoRecargo = pagos.reduce((acc, p) => {
+            if (p.metodo === 'TARJETA' && p.tipoTarjeta === 'CREDITO' && p.cuotas) {
+              const base = pagos.length === 1 ? total : (parseFloat(p.monto) || 0);
+              return acc + base * (RECARGOS_CREDITO[p.cuotas] ?? 0);
+            }
+            return acc;
+          }, 0);
+          const totalConRecargo = total + montoRecargo;
+          const hayRecargo = montoRecargo > 0;
           return (
             <div className="flex flex-col h-full">
 
@@ -668,19 +732,47 @@ export default function Caja() {
                       </span>
                     </div>
                   )}
+                  {hayRecargo && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Subtotal</span>
+                      <span className="font-semibold text-gray-700">{formatPrecio(total)}</span>
+                    </div>
+                  )}
+                  {hayRecargo && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-purple-600 font-semibold">
+                        Recargo crédito
+                      </span>
+                      <span className="font-semibold text-purple-600">
+                        +{formatPrecio(montoRecargo)}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
-                    <span className="text-base font-semibold text-gray-500">Total a cobrar</span>
-                    <span className="text-3xl font-black text-gray-900">{formatPrecio(total)}</span>
+                    <span className="text-base font-semibold text-gray-500">
+                      {hayRecargo ? 'Total final' : 'Total a cobrar'}
+                    </span>
+                    <span className={`text-3xl font-black ${
+                      hayRecargo ? 'text-purple-700' : 'text-gray-900'
+                    }`}>
+                      {formatPrecio(totalConRecargo)}
+                    </span>
                   </div>
                 </div>
 
                 {/* Split Payments ──────────────────────────────────── */}
                 {(() => {
-                  const montoIngresado = pagos.reduce(
-                    (acc, p) => acc + (parseFloat(p.monto) || 0), 0
+                  // En split: el usuario distribuye el BASE total; el recargo se suma automáticamente.
+                  // En modo único: el base es siempre igual al total completo.
+                  const montoBaseIngresado =
+                    pagos.length === 1
+                      ? total
+                      : pagos.reduce((acc, p) => acc + (parseFloat(p.monto) || 0), 0);
+                  const restante = total - montoBaseIngresado;
+                  const creditoSinCuotas = pagos.some(
+                    (p) => p.metodo === 'TARJETA' && p.tipoTarjeta === 'CREDITO' && !p.cuotas
                   );
-                  const restante = total - montoIngresado;
-                  const listo = Math.abs(restante) < 0.01;
+                  const listo = Math.abs(restante) < 0.01 && !creditoSinCuotas;
 
                   return (
                     <>
@@ -700,47 +792,146 @@ export default function Caja() {
                         </div>
 
                         {pagos.map((linea, idx) => (
-                          <div key={idx} className="flex gap-2 items-center">
-                            {/* Select método */}
-                            <div className="relative shrink-0">
-                              <CreditCard size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                              <select
-                                value={linea.metodo}
-                                onChange={(e) => actualizarLinea(idx, 'metodo', e.target.value)}
-                                className="pl-8 pr-3 py-2 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-transparent appearance-none cursor-pointer transition"
-                              >
-                                <option value="EFECTIVO">Efectivo</option>
-                                <option value="TARJETA">Tarjeta</option>
-                                <option value="TRANSFERENCIA">Transferencia</option>
-                              </select>
+                          <div key={idx} className="space-y-1.5">
+                            {/* Fila principal: método + monto */}
+                            <div className="flex gap-2 items-center">
+                              {/* Select método */}
+                              <div className="relative shrink-0">
+                                <CreditCard size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                <select
+                                  value={linea.metodo}
+                                  onChange={(e) => cambiarMetodo(idx, e.target.value as MetodoPago)}
+                                  className="pl-8 pr-3 py-2 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-transparent appearance-none cursor-pointer transition"
+                                >
+                                  <option value="EFECTIVO">Efectivo</option>
+                                  <option value="TARJETA">Tarjeta</option>
+                                  <option value="TRANSFERENCIA">Transferencia</option>
+                                </select>
+                              </div>
+
+                              {/* Monto: bloqueado en modo único, editable en split */}
+                              {pagos.length === 1 ? (
+                                <div className="flex-1 px-3 py-2 rounded-lg border border-emerald-200 bg-emerald-50 text-sm font-bold text-emerald-700 text-right select-none">
+                                  {formatPrecio(totalConRecargo)}
+                                </div>
+                              ) : (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  placeholder="Monto"
+                                  value={linea.monto}
+                                  onChange={(e) => actualizarLinea(idx, 'monto', e.target.value)}
+                                  autoFocus={idx === 0}
+                                  className="flex-1 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-transparent transition"
+                                />
+                              )}
+
+                              {/* Eliminar línea */}
+                              {pagos.length > 1 && (
+                                <button
+                                  onClick={() => eliminarLinea(idx)}
+                                  className="p-1.5 rounded-lg text-gray-300 hover:bg-red-50 hover:text-red-400 transition-colors shrink-0"
+                                >
+                                  <XCircle size={16} />
+                                </button>
+                              )}
                             </div>
 
-                            {/* Monto: bloqueado en modo único, editable en split */}
-                            {pagos.length === 1 ? (
-                              <div className="flex-1 px-3 py-2 rounded-lg border border-emerald-200 bg-emerald-50 text-sm font-bold text-emerald-700 text-right select-none">
-                                {formatPrecio(parseFloat(linea.monto) || 0)}
-                              </div>
-                            ) : (
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                placeholder="Monto"
-                                value={linea.monto}
-                                onChange={(e) => actualizarLinea(idx, 'monto', e.target.value)}
-                                autoFocus={idx === 0}
-                                className="flex-1 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-transparent transition"
-                              />
-                            )}
+                            {/* Sub-opciones cuando se elige Tarjeta */}
+                            {linea.metodo === 'TARJETA' && (
+                              <div className="flex items-center gap-2 pl-1 flex-wrap">
 
-                            {/* Eliminar línea */}
-                            {pagos.length > 1 && (
-                              <button
-                                onClick={() => eliminarLinea(idx)}
-                                className="p-1.5 rounded-lg text-gray-300 hover:bg-red-50 hover:text-red-400 transition-colors shrink-0"
-                              >
-                                <XCircle size={16} />
-                              </button>
+                                {/* Toggle Débito / Crédito */}
+                                <div className="flex rounded-lg bg-gray-100 p-0.5 gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => cambiarTipoTarjeta(idx, 'DEBITO')}
+                                    className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                                      linea.tipoTarjeta !== 'CREDITO'
+                                        ? 'bg-white text-blue-600 shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                                  >
+                                    Débito
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => cambiarTipoTarjeta(idx, 'CREDITO')}
+                                    className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                                      linea.tipoTarjeta === 'CREDITO'
+                                        ? 'bg-white text-purple-600 shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                                  >
+                                    Crédito
+                                  </button>
+                                </div>
+
+                                {/* Selector de cuotas + tooltip Info — solo cuando es Crédito */}
+                                {linea.tipoTarjeta === 'CREDITO' && (
+                                  <>
+                                    <select
+                                      value={linea.cuotas ?? ''}
+                                      onChange={(e) => cambiarCuotas(idx, Number(e.target.value))}
+                                      className="px-2.5 py-1 rounded-lg border border-purple-200 bg-purple-50 text-xs text-purple-700 font-semibold focus:outline-none focus:ring-2 focus:ring-purple-300 cursor-pointer transition"
+                                    >
+                                      <option value="">Cuotas…</option>
+                                      {CUOTAS_CREDITO.map((c) => (
+                                        <option key={c} value={c}>
+                                          {c} cuota{c !== 1 ? 's' : ''} (+{RECARGOS_CREDITO[c] * 100}%)
+                                        </option>
+                                      ))}
+                                    </select>
+
+                                    {/* Botón ℹ️ con tooltip de tabla de recargos */}
+                                    <div className="relative group/info">
+                                      <button
+                                        type="button"
+                                        className="p-1 rounded-lg text-gray-400 hover:text-purple-500 hover:bg-purple-50 transition-colors"
+                                        title="Ver tabla de recargos"
+                                      >
+                                        <Info size={14} />
+                                      </button>
+                                      {/* Tooltip */}
+                                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/info:block z-50 bg-gray-800 text-white text-xs rounded-xl p-3 shadow-xl whitespace-nowrap">
+                                        <p className="font-bold text-gray-200 mb-2 text-center">
+                                          Recargos por cuotas
+                                        </p>
+                                        <table className="w-full">
+                                          <thead>
+                                            <tr>
+                                              <th className="text-left text-gray-400 font-semibold pb-1.5 pr-6">Cuotas</th>
+                                              <th className="text-right text-gray-400 font-semibold pb-1.5">Recargo</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {CUOTAS_CREDITO.map((c) => (
+                                              <tr
+                                                key={c}
+                                                className={`${
+                                                  linea.cuotas === c
+                                                    ? 'text-purple-300 font-bold'
+                                                    : 'text-gray-200'
+                                                }`}
+                                              >
+                                                <td className="pr-6 py-0.5">
+                                                  {c} cuota{c !== 1 ? 's' : ''}
+                                                </td>
+                                                <td className="text-right font-semibold">
+                                                  {RECARGOS_CREDITO[c] * 100}%
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                        {/* Flecha */}
+                                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800" />
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
                             )}
                           </div>
                         ))}
@@ -755,18 +946,79 @@ export default function Caja() {
 
                       {/* Resumen de montos */}
                       <div className="bg-gray-100 rounded-xl p-3.5 space-y-1.5 text-sm">
+                        {/* Fila: total a cobrar */}
                         <div className="flex justify-between text-gray-500">
-                          <span>Total de la venta</span>
-                          <span className="font-semibold text-gray-700">{formatPrecio(total)}</span>
+                          <span>Total a cobrar</span>
+                          <span className="font-semibold text-gray-700">{formatPrecio(totalConRecargo)}</span>
                         </div>
-                        <div className="flex justify-between text-gray-500">
-                          <span>Monto ingresado</span>
-                          <span className={`font-semibold ${
-                            montoIngresado > total + 0.01 ? 'text-red-500' : 'text-gray-700'
-                          }`}>
-                            {formatPrecio(montoIngresado)}
-                          </span>
-                        </div>
+
+                        {/* Desglose por método — visible en split y en modo único cuando hay monto */}
+                        {(() => {
+                          const lineasConMonto = pagos.filter((p) =>
+                            pagos.length === 1
+                              ? true
+                              : (parseFloat(p.monto) || 0) > 0
+                          );
+                          if (lineasConMonto.length === 0) return null;
+
+                          return (
+                            <div className="space-y-1 pt-0.5">
+                              {lineasConMonto.map((p, i) => {
+                                const base =
+                                  pagos.length === 1 ? total : (parseFloat(p.monto) || 0);
+                                const esCreditoConCuotas =
+                                  p.metodo === 'TARJETA' &&
+                                  p.tipoTarjeta === 'CREDITO' &&
+                                  !!p.cuotas;
+                                const recargo = esCreditoConCuotas
+                                  ? base * (RECARGOS_CREDITO[p.cuotas!] ?? 0)
+                                  : 0;
+                                const montoFinal = base + recargo;
+
+                                // Etiqueta del método
+                                let label: string;
+                                if (p.metodo === 'EFECTIVO') label = 'Efectivo';
+                                else if (p.metodo === 'TRANSFERENCIA') label = 'Transferencia';
+                                else if (p.tipoTarjeta === 'CREDITO')
+                                  label = `Crédito${p.cuotas ? ` · ${p.cuotas} cuota${p.cuotas !== 1 ? 's' : ''}` : ''}`;
+                                else label = 'Débito';
+
+                                return (
+                                  <div
+                                    key={i}
+                                    className="flex justify-between items-baseline pl-3 border-l-2 border-gray-300"
+                                  >
+                                    <span className="text-xs text-gray-400">{label}</span>
+                                    <div className="text-right">
+                                      <span className={`text-xs font-semibold ${
+                                        esCreditoConCuotas ? 'text-purple-600' : 'text-gray-500'
+                                      }`}>
+                                        {formatPrecio(montoFinal)}
+                                      </span>
+                                      {esCreditoConCuotas && (
+                                        <span className="block text-[10px] text-purple-400 leading-none">
+                                          {formatPrecio(base)} + {formatPrecio(recargo)} recargo
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Monto base ingresado — solo en split cuando está incompleto */}
+                        {pagos.length > 1 && (
+                          <div className="flex justify-between text-gray-500">
+                            <span>Base distribuida</span>
+                            <span className={`font-semibold ${
+                              montoBaseIngresado > total + 0.01 ? 'text-red-500' : 'text-gray-700'
+                            }`}>
+                              {formatPrecio(montoBaseIngresado)}
+                            </span>
+                          </div>
+                        )}
                         <div className="h-px bg-gray-200" />
                         <div className="flex justify-between font-bold">
                           <span className={listo ? 'text-emerald-600' : 'text-amber-600'}>Restante</span>
@@ -796,7 +1048,7 @@ export default function Caja() {
                         ) : (
                           <>
                             <Wallet size={20} />
-                            Cobrar {formatPrecio(total)}
+                            Cobrar {formatPrecio(totalConRecargo)}
                           </>
                         )}
                       </button>

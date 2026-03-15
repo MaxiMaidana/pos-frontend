@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axiosClient';
+import { RECARGOS_CREDITO } from '../utils/constants';
 import {
   DollarSign,
   ShoppingBag,
@@ -18,18 +19,27 @@ import {
   Receipt,
   Package,
   Barcode,
+  Store,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface Stats {
   recaudacionTotal: number;
+  /** Recaudación sin recargos de crédito (campo enviado por el backend actualizado) */
+  recaudacionBase?: number;
+  /** Alias alternativo que algunos backends pueden enviar */
+  recaudacionNeta?: number;
   ventasTotales: number;
   ventasCanceladas: number;
   productosStockBajo: number;
   desglosePagosGlobal?: {
     EFECTIVO: number;
-    TARJETA: number;
+    TARJETA?: number;                // legacy — puede venir en backends viejos
+    TARJETA_DEBITO?: number;
+    TARJETA_CREDITO?: number;        // monto bruto cobrado al cliente
+    TARJETA_CREDITO_BASE?: number;   // monto neto sin recargo
+    TARJETA_CREDITO_RECARGO?: number;// recargo del banco
     TRANSFERENCIA: number;
   };
 }
@@ -45,7 +55,9 @@ interface VendedorAnalitica {
 
 interface DesglosePagos {
   EFECTIVO: number;
-  TARJETA: number;
+  TARJETA?: number;          // legacy
+  TARJETA_DEBITO?: number;
+  TARJETA_CREDITO?: number;
   TRANSFERENCIA: number;
 }
 
@@ -74,12 +86,19 @@ interface DetalleVenta {
   producto_nombre?: string;
 }
 
+interface PagoVenta {
+  metodo: string;   // 'EFECTIVO' | 'TARJETA_DEBITO' | 'TARJETA_CREDITO' | 'TRANSFERENCIA'
+  monto: number;
+  cuotas?: number;
+}
+
 interface VentaDetalle {
   id: string;
   created_at: string;
   estado: string;
   total: number;
   detalles?: DetalleVenta[];
+  pagos?: PagoVenta[];
 }
 
 interface ProductoStock {
@@ -164,6 +183,7 @@ export default function Dashboard() {
   const [productosStock, setProductosStock] = useState<ProductoStock[]>([]);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [totalInteresesCredito, setTotalInteresesCredito] = useState(0);
 
   // ── Fetch de datos ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -226,7 +246,29 @@ export default function Dashboard() {
 
     if (tipo === 'recaudacion') {
       setModalTipo('recaudacion');
-      setLoadingDetalle(false);
+      setLoadingDetalle(true);
+      try {
+        const { data } = await api.get<VentaDetalle[]>(`/ventas`, {
+          params: { fecha, estado: 'PAGADA' },
+        });
+        const ventas = Array.isArray(data) ? data : (data as { data?: VentaDetalle[] }).data ?? [];
+        // Calcular el total de intereses sumando solo los de TARJETA_CREDITO
+        let intereses = 0;
+        for (const venta of ventas) {
+          for (const pago of venta.pagos ?? []) {
+            if (pago.metodo === 'TARJETA_CREDITO') {
+              const recargoDecimal = RECARGOS_CREDITO[pago.cuotas ?? 1] ?? 0;
+              const baseMonto = pago.monto / (1 + recargoDecimal);
+              intereses += pago.monto - baseMonto;
+            }
+          }
+        }
+        setTotalInteresesCredito(intereses);
+      } catch {
+        setTotalInteresesCredito(0);
+      } finally {
+        setLoadingDetalle(false);
+      }
       return;
     }
 
@@ -356,9 +398,14 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <p className="text-2xl font-black text-gray-900 tracking-tight">
-                  {formatPrecio(stats.recaudacionTotal)}
+                  {formatPrecio(stats.recaudacionBase ?? stats.recaudacionTotal)}
                 </p>
-                <p className="text-xs text-emerald-600 font-medium mt-1.5">Ventas cobradas</p>
+                <p className="text-xs text-emerald-600 font-medium mt-1.5">
+                  {stats.recaudacionBase != null && stats.recaudacionBase < stats.recaudacionTotal
+                    ? 'Base neta · excl. recargos'
+                    : 'Ventas cobradas'
+                  }
+                </p>
               </div>
 
               {/* Ventas Cerradas */}
@@ -639,9 +686,14 @@ export default function Dashboard() {
                             Efectivo {formatPrecio(Number(caja.desglosePagos?.EFECTIVO) || 0)}
                           </span>
 
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100">
+                            <CreditCard size={11} />
+                            Débito {formatPrecio(Number(caja.desglosePagos?.TARJETA_DEBITO) || 0)}
+                          </span>
+
                           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-50 text-violet-700 text-xs font-semibold border border-violet-100">
                             <CreditCard size={11} />
-                            Tarjeta {formatPrecio(Number(caja.desglosePagos?.TARJETA) || 0)}
+                            Crédito {formatPrecio(Number(caja.desglosePagos?.TARJETA_CREDITO) || 0)}
                           </span>
 
                           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-50 text-sky-700 text-xs font-semibold border border-sky-100">
@@ -710,75 +762,136 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Desglose de recaudación — sin spinner, datos locales */}
-              {!loadingDetalle && modalTipo === 'recaudacion' && (
-                <div className="space-y-3 py-2">
-                  {/* Fila total */}
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-6 py-5 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-emerald-100 rounded-xl">
-                        <DollarSign size={20} className="text-emerald-700" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Total cobrado</p>
-                        <p className="text-xs text-emerald-500 mt-0.5">Todos los métodos</p>
-                      </div>
-                    </div>
-                    <p className="text-2xl font-black text-emerald-800 tracking-tight">
-                      {formatPrecio(Number(stats?.recaudacionTotal) || 0)}
-                    </p>
-                  </div>
+              {/* Desglose de recaudación */}
+              {!loadingDetalle && modalTipo === 'recaudacion' && (() => {
+                const d = stats?.desglosePagosGlobal;
+                const totalBruto   = Number(stats?.recaudacionTotal) || 0;
+                const recargos     = totalInteresesCredito;
+                const neta         = totalBruto - recargos;
+                const creditoBruto = Number(d?.TARJETA_CREDITO) || 0;
 
-                  {/* Efectivo */}
-                  <div className="bg-teal-50 border border-teal-100 rounded-2xl px-6 py-5 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-teal-100 rounded-xl">
-                        <Banknote size={20} className="text-teal-700" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-teal-600 uppercase tracking-wider">Efectivo</p>
-                        <p className="text-xs text-teal-500 mt-0.5">Pagos en billetes y monedas</p>
-                      </div>
-                    </div>
-                    <p className="text-2xl font-black text-teal-800 tracking-tight">
-                      {formatPrecio(Number(stats?.desglosePagosGlobal?.EFECTIVO) || 0)}
-                    </p>
-                  </div>
+                return (
+                  <div className="space-y-3 py-2">
 
-                  {/* Tarjeta */}
-                  <div className="bg-violet-50 border border-violet-100 rounded-2xl px-6 py-5 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-violet-100 rounded-xl">
-                        <CreditCard size={20} className="text-violet-700" />
+                    {/* Total cobrado (bruto) */}
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-6 py-5 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-emerald-100 rounded-xl">
+                          <DollarSign size={20} className="text-emerald-700" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Total cobrado</p>
+                          <p className="text-xs text-emerald-500 mt-0.5">Todos los métodos · monto bruto</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs font-bold text-violet-600 uppercase tracking-wider">Tarjeta</p>
-                        <p className="text-xs text-violet-500 mt-0.5">Débito y crédito</p>
-                      </div>
+                      <p className="text-2xl font-black text-emerald-800 tracking-tight">
+                        {formatPrecio(totalBruto)}
+                      </p>
                     </div>
-                    <p className="text-2xl font-black text-violet-800 tracking-tight">
-                      {formatPrecio(Number(stats?.desglosePagosGlobal?.TARJETA) || 0)}
-                    </p>
-                  </div>
 
-                  {/* Transferencia */}
-                  <div className="bg-sky-50 border border-sky-100 rounded-2xl px-6 py-5 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-sky-100 rounded-xl">
-                        <ArrowRightLeft size={20} className="text-sky-700" />
+                    {/* Recaudación Neta — siempre visible */}
+                    <div className="bg-green-700 border border-green-800 rounded-2xl px-6 py-5 flex items-center justify-between shadow-md">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-green-600 rounded-xl">
+                          <Store size={20} className="text-white" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-green-200 uppercase tracking-wider">Recaudación Neta (Local)</p>
+                          <p className="text-xs text-green-300 mt-0.5">
+                            {recargos > 0
+                              ? `Excl. intereses bancarios (−${formatPrecio(recargos)})`
+                              : 'Sin recargos de crédito en el día'
+                            }
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs font-bold text-sky-600 uppercase tracking-wider">Transferencia</p>
-                        <p className="text-xs text-sky-500 mt-0.5">Mercado Pago, bancaria</p>
-                      </div>
+                      <p className="text-2xl font-black text-white tracking-tight">
+                        {formatPrecio(neta)}
+                      </p>
                     </div>
-                    <p className="text-2xl font-black text-sky-800 tracking-tight">
-                      {formatPrecio(Number(stats?.desglosePagosGlobal?.TRANSFERENCIA) || 0)}
-                    </p>
-                  </div>
-                </div>
-              )}
 
+                    {/* Efectivo */}
+                    <div className="bg-teal-50 border border-teal-100 rounded-2xl px-6 py-5 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-teal-100 rounded-xl">
+                          <Banknote size={20} className="text-teal-700" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-teal-600 uppercase tracking-wider">Efectivo</p>
+                          <p className="text-xs text-teal-500 mt-0.5">Pagos en billetes y monedas</p>
+                        </div>
+                      </div>
+                      <p className="text-2xl font-black text-teal-800 tracking-tight">
+                        {formatPrecio(Number(d?.EFECTIVO) || 0)}
+                      </p>
+                    </div>
+
+                    {/* Tarjeta Débito */}
+                    <div className="bg-blue-50 border border-blue-100 rounded-2xl px-6 py-5 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-blue-100 rounded-xl">
+                          <CreditCard size={20} className="text-blue-700" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">Tarjeta Débito</p>
+                          <p className="text-xs text-blue-500 mt-0.5">Pago inmediato</p>
+                        </div>
+                      </div>
+                      <p className="text-2xl font-black text-blue-800 tracking-tight">
+                        {formatPrecio(Number(d?.TARJETA_DEBITO) || 0)}
+                      </p>
+                    </div>
+
+                    {/* Tarjeta Crédito */}
+                    <div className="bg-violet-50 border border-violet-100 rounded-2xl px-6 py-5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 bg-violet-100 rounded-xl">
+                            <CreditCard size={20} className="text-violet-700" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-violet-600 uppercase tracking-wider">Tarjeta Crédito</p>
+                            <p className="text-xs text-violet-500 mt-0.5">Cobrado al cliente (incl. recargo)</p>
+                          </div>
+                        </div>
+                        <p className="text-2xl font-black text-violet-800 tracking-tight">
+                          {formatPrecio(creditoBruto)}
+                        </p>
+                      </div>
+                      {recargos > 0 && (
+                        <div className="mt-3 pt-3 border-t border-violet-100 flex gap-4 text-xs">
+                          <div className="flex-1 text-center">
+                            <p className="text-violet-400 font-medium">Base del local</p>
+                            <p className="font-bold text-violet-700 mt-0.5">{formatPrecio(creditoBruto - recargos)}</p>
+                          </div>
+                          <div className="w-px bg-violet-100" />
+                          <div className="flex-1 text-center">
+                            <p className="text-violet-400 font-medium">Recargo bancario</p>
+                            <p className="font-bold text-violet-500 mt-0.5">+{formatPrecio(recargos)}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Transferencia */}
+                    <div className="bg-sky-50 border border-sky-100 rounded-2xl px-6 py-5 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-sky-100 rounded-xl">
+                          <ArrowRightLeft size={20} className="text-sky-700" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-sky-600 uppercase tracking-wider">Transferencia</p>
+                          <p className="text-xs text-sky-500 mt-0.5">Mercado Pago, bancaria</p>
+                        </div>
+                      </div>
+                      <p className="text-2xl font-black text-sky-800 tracking-tight">
+                        {formatPrecio(Number(d?.TRANSFERENCIA) || 0)}
+                      </p>
+                    </div>
+
+                  </div>
+                );
+              })()}
               {/* Sin datos — ventas */}
               {!loadingDetalle && modalTipo === 'venta' && ventasDetalle.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-300">
@@ -837,6 +950,43 @@ export default function Dashboard() {
                             </li>
                           ))}
                         </ul>
+                      )}
+
+                      {/* Métodos de pago */}
+                      {(venta.pagos ?? []).length > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap mt-2.5 pt-2.5 border-t border-gray-200">
+                          {(venta.pagos ?? []).map((pago, i) => {
+                            let label: string;
+                            let colorClass: string;
+                            if (pago.metodo === 'EFECTIVO') {
+                              label = 'Efectivo';
+                              colorClass = 'bg-teal-50 text-teal-700 border-teal-100';
+                            } else if (pago.metodo === 'TARJETA_DEBITO') {
+                              label = 'T. Débito';
+                              colorClass = 'bg-blue-50 text-blue-700 border-blue-100';
+                            } else if (pago.metodo === 'TARJETA_CREDITO') {
+                              label = pago.cuotas && pago.cuotas > 1
+                                ? `T. Crédito (${pago.cuotas} cuotas)`
+                                : 'T. Crédito';
+                              colorClass = 'bg-violet-50 text-violet-700 border-violet-100';
+                            } else if (pago.metodo === 'TRANSFERENCIA') {
+                              label = 'Transferencia';
+                              colorClass = 'bg-sky-50 text-sky-700 border-sky-100';
+                            } else {
+                              label = pago.metodo;
+                              colorClass = 'bg-gray-50 text-gray-500 border-gray-100';
+                            }
+                            return (
+                              <span
+                                key={i}
+                                className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md border ${colorClass}`}
+                              >
+                                <CreditCard size={9} />
+                                {label} · {formatPrecio(Number(pago.monto) || 0)}
+                              </span>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   ))}
