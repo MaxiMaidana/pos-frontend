@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../api/axiosClient';
+import SyncButton from '../components/SyncButton';
 import {
   Search,
   ShoppingCart,
@@ -231,8 +232,11 @@ export default function NuevaVenta() {
           <div className="flex items-center justify-between mb-3">
             <h1 className="text-xl font-bold text-gray-800">Catálogo de Productos</h1>
 
-            {/* Toggle: Permitir stock negativo */}
-            <button
+            <div className="flex items-center gap-2">
+              <SyncButton />
+
+              {/* Toggle: Permitir stock negativo */}
+              <button
               onClick={() => setPermitirStockNegativo((prev) => !prev)}
               className={`
                 flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-200
@@ -243,6 +247,7 @@ export default function NuevaVenta() {
               `}
               title="Permitir venta sin stock (Modo Transición)"
             >
+
               {/* Track del switch */}
               <span
                 className={`
@@ -266,6 +271,7 @@ export default function NuevaVenta() {
                 ) : 'Venta sin stock'}
               </span>
             </button>
+            </div>
           </div>
 
           <div className="relative">

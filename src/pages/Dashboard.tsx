@@ -73,6 +73,7 @@ interface CajaAnalitica {
   monto_esperado: number;
   monto_cierre: number | null;
   desglosePagos: DesglosePagos;
+  fecha_apertura?: string;
 }
 
 interface Analiticas {
@@ -117,7 +118,7 @@ interface ProductoStock {
 const formatPrecio = (valor: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(valor);
 
-const hoy = () => new Date().toISOString().split('T')[0];
+const hoy = () => new Date().toLocaleDateString('en-CA');
 
 const formatFechaLegible = (fecha: string) => {
   const [year, month, day] = fecha.split('-').map(Number);
@@ -225,10 +226,10 @@ export default function Dashboard() {
     setIsSyncing(true);
     try {
       await api.post(`/sync/manual`);
-      alert('✅ Sincronización completada con éxito.');
     } catch {
-      alert('❌ Error al sincronizar. Verificá la conexión con el servidor.');
+      // El endpoint de sync puede no existir; continuamos con el refetch igual
     } finally {
+      setRetryCount((c) => c + 1);
       setIsSyncing(false);
     }
   };
@@ -602,7 +603,16 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="divide-y divide-gray-50">
-                  {(analiticas?.reporteCajas ?? []).slice().reverse().map((caja) => {
+                  {(analiticas?.reporteCajas ?? []).slice().sort((a, b) => {
+                      // Prioridad 1: ABIERTA siempre primero
+                      const aAbierta = a.estado === 'ABIERTA' ? 0 : 1;
+                      const bAbierta = b.estado === 'ABIERTA' ? 0 : 1;
+                      if (aAbierta !== bAbierta) return aAbierta - bAbierta;
+                      // Prioridad 2: más reciente primero
+                      const aFecha = a.fecha_apertura ?? a.id;
+                      const bFecha = b.fecha_apertura ?? b.id;
+                      return bFecha.localeCompare(aFecha);
+                    }).map((caja) => {
                     const montoEsperado = Number(caja?.monto_esperado) || 0;
                     const montoCierre = caja?.monto_cierre != null ? Number(caja.monto_cierre) : null;
                     const diferencia = montoCierre !== null ? montoCierre - montoEsperado : null;

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/axiosClient';
+import SyncButton from '../components/SyncButton';
 import { RECARGOS_CREDITO, CUOTAS_CREDITO } from '../utils/constants';
 import {
   Wallet,
@@ -300,14 +301,17 @@ export default function Caja() {
     if (!sesion) return;
     const input = window.prompt('Ingresá el monto de efectivo en el cajón al cierre:');
     if (input === null) return; // canceló
-    const monto_efectivo_cierre = parseFloat(input);
-    if (isNaN(monto_efectivo_cierre)) {
+    const monto_cierre = parseFloat(input);
+    if (isNaN(monto_cierre)) {
       alert('El monto ingresado no es válido. Usá solo números.');
       return;
     }
     try {
       setIsSubmitting(true);
-      await api.post(`/caja/${sesion.caja_id}/cerrar`, { monto_efectivo_cierre });
+      await api.post(`/caja/${sesion.caja_id}/cerrar`, { 
+        monto_efectivo_contado: monto_cierre, 
+        sesion_id: sesion.sesion_id 
+      });
       localStorage.removeItem('sesion_caja');
       setSesion(null);
       setSeleccionada(null);
@@ -497,14 +501,17 @@ export default function Caja() {
               <h1 className="text-xl font-bold text-gray-800">Comandas</h1>
               <p className="text-xs text-gray-400 mt-0.5">Pendientes de cobro</p>
             </div>
-            <button
-              onClick={fetchVentas}
-              disabled={isLoading}
-              title="Refrescar"
-              className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-indigo-500 transition-colors disabled:opacity-40"
-            >
-              <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
-            </button>
+            <div className="flex items-center gap-2">
+              <SyncButton />
+              <button
+                onClick={fetchVentas}
+                disabled={isLoading}
+                title="Refrescar"
+                className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-indigo-500 transition-colors disabled:opacity-40"
+              >
+                <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+              </button>
+            </div>
           </div>
 
           {/* Contador */}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Toaster } from 'sonner';
 import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import {
   ShoppingCart,
@@ -327,6 +328,7 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <Toaster position="bottom-right" richColors />
         <AppContent />
       </AuthProvider>
     </BrowserRouter>

@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import Papa from 'papaparse';
+import { toast } from 'sonner';
 import api from '../api/axiosClient';
 import { isWebMode } from '../utils/env';
+import SyncButton from '../components/SyncButton';
 import {
   Search,
   Plus,
@@ -18,6 +21,8 @@ import {
   Hash,
   Eye,
   EyeOff,
+  Upload,
+  Download,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -89,6 +94,11 @@ export default function Inventario() {
 
   // Ref para mover el foco desde el lector de códigos al siguiente campo
   const precioInputRef = useRef<HTMLInputElement>(null);
+
+  // CSV import
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // ── Fetch productos ──────────────────────────────────────────────────────
   const fetchProductos = useCallback(async () => {
@@ -208,6 +218,71 @@ export default function Inventario() {
     }
   };
 
+  // ── Exportar CSV ──────────────────────────────────────────────────────
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    try {
+      const response = await api.get('/productos/export', { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data as Blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `inventario_${new Date().toLocaleDateString('en-CA')}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Error al exportar el inventario.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // ── Importar CSV ──────────────────────────────────────────────────────
+  const handleCsvChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset so same file can be re-selected
+    if (!file) return;
+
+    Papa.parse<Record<string, string>>(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        const productos = results.data
+          .map((row) => ({
+            codigo_barras: row.codigo_barras?.trim() || undefined,
+            nombre: row.nombre?.trim(),
+            precio_actual: parseFloat(row.precio_actual ?? '0') || 0,
+            stock: parseInt(row.stock ?? '0') || 0,
+          }))
+          .filter((p) => p.nombre);
+
+        if (productos.length === 0) {
+          toast.error('El archivo CSV no contiene filas válidas.');
+          return;
+        }
+
+        const BATCH = 500;
+        const totalBatches = Math.ceil(productos.length / BATCH);
+        setIsImporting(true);
+        const toastId = toast.loading(`Importando ${productos.length} productos...`);
+        try {
+          for (let i = 0; i < totalBatches; i++) {
+            const chunk = productos.slice(i * BATCH, (i + 1) * BATCH);
+            await api.post('/productos/import', { productos: chunk });
+          }
+          toast.success(`${productos.length} productos importados correctamente.`, { id: toastId });
+          await fetchProductos();
+        } catch {
+          toast.error('Error al importar. Verificá el formato del CSV e intentá de nuevo.', { id: toastId });
+        } finally {
+          setIsImporting(false);
+        }
+      },
+      error: () => {
+        toast.error('No se pudo leer el archivo CSV.');
+      },
+    });
+  };
+
   // ── Toggle activo ("En caja") ──────────────────────────────────────────
   const handleToggleActivo = async (producto: Producto) => {
     try {
@@ -230,8 +305,10 @@ export default function Inventario() {
     <div className="flex flex-col h-full bg-gray-50">
 
       {/* ── Cabecera ──────────────────────────────────────────────────────── */}
-      <div className="bg-white border-b border-gray-200 shadow-sm px-6 py-4">
-        <div className="flex items-center justify-between gap-4">
+      <div className="bg-white border-b border-gray-200 shadow-sm px-6 pt-4 pb-0">
+
+        {/* Fila 1: título + buscador + Nuevo Producto */}
+        <div className="flex items-center justify-between gap-4 pb-3">
           <div>
             <h1 className="text-xl font-bold text-gray-800">Inventario</h1>
             <p className="text-xs text-gray-400 mt-0.5">
@@ -252,7 +329,6 @@ export default function Inventario() {
               />
             </div>
 
-            {/* Nuevo producto */}
             {!isWebMode && (
               <button
                 onClick={abrirModalCrear}
@@ -264,6 +340,51 @@ export default function Inventario() {
             )}
           </div>
         </div>
+
+        {/* Fila 2: botones secundarios (solo modo local) */}
+        {!isWebMode && (
+          <div className="flex items-center justify-end gap-2 py-2 border-t border-gray-100">
+            {/* Input oculto */}
+            <input
+              ref={csvInputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={handleCsvChange}
+            />
+
+            <SyncButton />
+
+            <button
+              onClick={handleExportCsv}
+              disabled={isExporting}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 text-sm font-bold transition-all shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isExporting
+                ? <Loader2 size={15} className="animate-spin" />
+                : <Download size={15} />}
+              {isExporting ? 'Exportando...' : 'Exportar CSV'}
+            </button>
+
+            <button
+              onClick={() => csvInputRef.current?.click()}
+              disabled={isImporting}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-sm font-bold transition-all shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isImporting
+                ? <Loader2 size={15} className="animate-spin" />
+                : <Upload size={15} />}
+              {isImporting ? 'Importando...' : 'Importar CSV'}
+            </button>
+          </div>
+        )}
+
+        {/* En modo web (admin remoto): solo SyncButton en fila 2 */}
+        {isWebMode && (
+          <div className="flex items-center justify-end gap-2 py-2 border-t border-gray-100">
+            <SyncButton />
+          </div>
+        )}
       </div>
 
       {/* ── Tabla ─────────────────────────────────────────────────────────── */}
