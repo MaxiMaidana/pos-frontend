@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
 import api from '../api/axiosClient';
 import SyncButton from '../components/SyncButton';
 import { RECARGOS_CREDITO, CUOTAS_CREDITO } from '../utils/constants';
@@ -316,7 +317,16 @@ export default function Caja() {
       setSesion(null);
       setSeleccionada(null);
       setVentas([]);
-    } catch {
+    } catch (error) {
+      if (axios.isAxiosError(error) && (error.response?.status === 400 || error.response?.status === 404)) {
+        alert('La sesión de caja ya no existe o fue cerrada en otro lado. Limpiando estado local...');
+        localStorage.removeItem('sesion_caja');
+        setSesion(null);
+        setSeleccionada(null);
+        setVentas([]);
+        resetPagos();
+        return;
+      }
       alert('❌ Error al cerrar el turno. Intentá de nuevo.');
     } finally {
       setIsSubmitting(false);
