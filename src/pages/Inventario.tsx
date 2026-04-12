@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Papa from 'papaparse';
 import { toast } from 'sonner';
 import api from '../api/axiosClient';
-import { isWebMode } from '../utils/env';
+
 import SyncButton from '../components/SyncButton';
 import {
   Search,
@@ -32,7 +32,8 @@ interface Producto {
   nombre: string;
   codigo_barras?: string;
   precio_actual: number;
-  stock: number;
+  stock_local: number;
+  stock_otro?: number | null;
   activo?: boolean;
 }
 
@@ -147,7 +148,7 @@ export default function Inventario() {
       nombre: producto.nombre,
       codigo_barras: producto.codigo_barras ?? '',
       precio_actual: String(producto.precio_actual),
-      stock: String(producto.stock),
+      stock: String(producto.stock_local),
     });
     setErrorForm(null);
     setModalAbierto(true);
@@ -329,62 +330,51 @@ export default function Inventario() {
               />
             </div>
 
-            {!isWebMode && (
-              <button
-                onClick={abrirModalCrear}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white text-sm font-bold shadow-sm shadow-emerald-100 transition-all shrink-0"
-              >
-                <Plus size={16} />
-                Nuevo Producto
-              </button>
-            )}
+            <button
+              onClick={abrirModalCrear}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white text-sm font-bold shadow-sm shadow-emerald-100 transition-all shrink-0"
+            >
+              <Plus size={16} />
+              Nuevo Producto
+            </button>
           </div>
         </div>
 
-        {/* Fila 2: botones secundarios (solo modo local) */}
-        {!isWebMode && (
-          <div className="flex items-center justify-end gap-2 py-2 border-t border-gray-100">
-            {/* Input oculto */}
-            <input
-              ref={csvInputRef}
-              type="file"
-              accept=".csv"
-              className="hidden"
-              onChange={handleCsvChange}
-            />
+        {/* Fila 2: botones de gestión */}
+        <div className="flex items-center justify-end gap-2 py-2 border-t border-gray-100">
+          {/* Input oculto */}
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={handleCsvChange}
+          />
 
-            <SyncButton />
+          <SyncButton />
 
-            <button
-              onClick={handleExportCsv}
-              disabled={isExporting}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 text-sm font-bold transition-all shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isExporting
-                ? <Loader2 size={15} className="animate-spin" />
-                : <Download size={15} />}
-              {isExporting ? 'Exportando...' : 'Exportar CSV'}
-            </button>
+          <button
+            onClick={handleExportCsv}
+            disabled={isExporting}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 text-sm font-bold transition-all shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isExporting
+              ? <Loader2 size={15} className="animate-spin" />
+              : <Download size={15} />}
+            {isExporting ? 'Exportando...' : 'Exportar CSV'}
+          </button>
 
-            <button
-              onClick={() => csvInputRef.current?.click()}
-              disabled={isImporting}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-sm font-bold transition-all shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isImporting
-                ? <Loader2 size={15} className="animate-spin" />
-                : <Upload size={15} />}
-              {isImporting ? 'Importando...' : 'Importar CSV'}
-            </button>
-          </div>
-        )}
-
-        {/* En modo web (admin remoto): solo SyncButton en fila 2 */}
-        {isWebMode && (
-          <div className="flex items-center justify-end gap-2 py-2 border-t border-gray-100">
-            <SyncButton />
-          </div>
-        )}
+          <button
+            onClick={() => csvInputRef.current?.click()}
+            disabled={isImporting}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-sm font-bold transition-all shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isImporting
+              ? <Loader2 size={15} className="animate-spin" />
+              : <Upload size={15} />}
+            {isImporting ? 'Importando...' : 'Importar CSV'}
+          </button>
+        </div>
       </div>
 
       {/* ── Tabla ─────────────────────────────────────────────────────────── */}
@@ -419,7 +409,7 @@ export default function Inventario() {
             <p className="text-sm font-medium">
               {busqueda ? `Sin resultados para "${busqueda}"` : 'No hay productos cargados aún.'}
             </p>
-            {!isWebMode && !busqueda && (
+            {!busqueda && (
               <button
                 onClick={abrirModalCrear}
                 className="text-xs text-emerald-500 hover:underline font-semibold"
@@ -448,21 +438,16 @@ export default function Inventario() {
                   <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
                     Stock
                   </th>
-                  {!isWebMode && (
-                    <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
-                      En Caja
-                    </th>
-                  )}
-                  {!isWebMode && (
-                    <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-6 py-3.5">
-                      Acciones
-                    </th>
-                  )}
+                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                    En Caja
+                  </th>
+                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-6 py-3.5">
+                    Acciones
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {productos.map((producto) => {
-                  const stockBajo = producto.stock < STOCK_BAJO;
                   const activo = producto.activo ?? true;
                   return (
                     <tr
@@ -502,61 +487,64 @@ export default function Inventario() {
                       </td>
 
                       {/* Stock */}
-                      <td className="px-4 py-4 text-center">
-                        {stockBajo ? (
-                          <span className="inline-flex items-center gap-1.5 bg-red-50 text-red-500 text-xs font-bold px-2.5 py-1 rounded-full border border-red-200">
-                            <AlertTriangle size={11} />
-                            {producto.stock}
+                      <td className="px-4 py-4">
+                        <div className="flex flex-wrap items-center justify-center gap-1.5">
+                          {/* L1 — este local */}
+                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
+                            producto.stock_local > 0
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-red-50 text-red-500 border-red-200'
+                          }`}>
+                            🏠 L1: {producto.stock_local}
                           </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-bold px-2.5 py-1 rounded-full border border-emerald-200">
-                            <Hash size={10} />
-                            {producto.stock}
+                          {/* L2 — otro local */}
+                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
+                            (producto.stock_otro ?? 0) > 0
+                              ? 'bg-sky-50 text-sky-700 border-sky-200'
+                              : 'bg-red-50 text-red-500 border-red-200'
+                          }`}>
+                            🏪 L2: {producto.stock_otro ?? 0}
                           </span>
-                        )}
+                        </div>
                       </td>
 
                       {/* En caja (toggle activo) */}
-                      {!isWebMode && (
-                        <td className="px-4 py-4 text-center">
-                          <button
-                            onClick={() => handleToggleActivo(producto)}
-                            title={activo ? 'Pausar (ocultar del POS)' : 'Activar (mostrar en el POS)'}
-                            className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border transition-colors ${
-                              activo
-                                ? 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100'
-                                : 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-gray-200'
-                            }`}
-                          >
-                            {activo
-                              ? <Eye size={13} />
-                              : <EyeOff size={13} />
-                            }
-                          </button>
-                        </td>
-                      )}
+                      <td className="px-4 py-4 text-center">
+                        <button
+                          onClick={() => handleToggleActivo(producto)}
+                          title={activo ? 'Pausar (ocultar del POS)' : 'Activar (mostrar en el POS)'}
+                          className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border transition-colors ${
+                            activo
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100'
+                              : 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-gray-200'
+                          }`}
+                        >
+                          {activo
+                            ? <Eye size={13} />
+                            : <EyeOff size={13} />
+                          }
+                        </button>
+                      </td>
 
                       {/* Acciones */}
-                      {!isWebMode && (
-                        <td className="px-6 py-4 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => abrirModalEditar(producto)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 hover:border-indigo-200 transition-colors"
-                            >
-                              <Edit size={12} />
-                              Editar
-                            </button>
-                            <button
-                              onClick={() => handleEliminar(producto)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 border border-red-100 hover:border-red-200 transition-colors"
-                            >
-                              <Trash2 size={12} />
-                              Eliminar
-                            </button>
-                          </div>
-                        </td>
-                      )}
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => abrirModalEditar(producto)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 hover:border-indigo-200 transition-colors"
+                          >
+                            <Edit size={12} />
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => handleEliminar(producto)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 border border-red-100 hover:border-red-200 transition-colors"
+                          >
+                            <Trash2 size={12} />
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -575,7 +563,7 @@ export default function Inventario() {
                     <span className="font-semibold text-gray-600">{meta.total}</span> productos)
                   </p>
                 )}
-                {productos.some((p) => p.stock < STOCK_BAJO) && (
+                {productos.some((p) => p.stock_local < STOCK_BAJO) && (
                   <div className="flex items-center gap-1.5 text-xs text-red-400 font-medium">
                     <AlertTriangle size={12} />
                     Hay productos con stock bajo ({STOCK_BAJO} unidades o menos)
