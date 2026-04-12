@@ -22,6 +22,7 @@ import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AdminRoute, EmpleadoRoute, SharedRoute } from './components/ProtectedRoute';
 import { isWebMode } from './utils/env';
+import { useNombreTienda } from './hooks/useNombreTienda';
 
 // ─── Nav items ────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,7 @@ function Sidebar({
 }) {
   const location = useLocation();
   const { logout, rol } = useAuth();
+  const nombreTienda = useNombreTienda();
 
   const [blockMessage, setBlockMessage] = useState<string | null>(null);
 
@@ -99,7 +101,7 @@ function Sidebar({
         {(!collapsed || mobile) && (
           <div className="min-w-0">
             <h2 className="text-xl font-black text-indigo-600 tracking-tight truncate">POS Edge</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Librería Central</p>
+            {nombreTienda && <p className="text-xs text-gray-400 mt-0.5 truncate">{nombreTienda}</p>}
           </div>
         )}
 

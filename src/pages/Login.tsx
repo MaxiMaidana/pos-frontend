@@ -12,6 +12,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axiosClient';
 import { isWebMode } from '../utils/env';
+import { useNombreTienda } from '../hooks/useNombreTienda';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,8 @@ export default function Login() {
     if (rol === 'ADMIN') navigate('/dashboard', { replace: true });
     if (rol === 'EMPLEADO') navigate('/', { replace: true });
   }, [rol, navigate]);
+
+  const nombreTienda = useNombreTienda();
 
   const [tab, setTab] = useState<Tab>(isWebMode ? 'admin' : 'empleado');
   const [password, setPassword] = useState('');
@@ -88,7 +91,7 @@ export default function Login() {
             <Lock size={28} className="text-indigo-500" />
           </div>
           <h1 className="text-2xl font-black text-gray-800 tracking-tight">POS Edge</h1>
-          <p className="text-sm text-gray-400 mt-1">Librería Central</p>
+          {nombreTienda && <p className="text-sm text-gray-400 mt-1">{nombreTienda}</p>}
         </div>
 
         {/* Tabs */}
