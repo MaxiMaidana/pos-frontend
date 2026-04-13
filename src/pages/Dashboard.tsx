@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axiosClient';
 import { RECARGOS_CREDITO } from '../utils/constants';
+import { isWebMode } from '../utils/env';
 import {
   DollarSign,
   ShoppingBag,
@@ -116,6 +117,16 @@ interface ProductoStock {
   precio_actual?: number;
 }
 
+interface Tienda {
+  id: string;
+  nombre?: string;
+  nombre_tienda?: string;
+}
+
+interface IdentidadConfig {
+  nombre_tienda?: string;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 
@@ -176,6 +187,9 @@ function SkeletonTable({ rows = 4 }: { rows?: number }) {
 
 export default function Dashboard() {
   const [fecha, setFecha] = useState<string>(hoy);
+  const [tiendas, setTiendas] = useState<Tienda[]>([]);
+  const [tiendaSeleccionada, setTiendaSeleccionada] = useState<string>('');
+  const [filtroInicialResuelto, setFiltroInicialResuelto] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [analiticas, setAnaliticas] = useState<Analiticas>({ rendimientoVendedores: [], reporteCajas: [] });
   const [loading, setLoading] = useState(true);
@@ -192,20 +206,84 @@ export default function Dashboard() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [totalInteresesCredito, setTotalInteresesCredito] = useState(0);
 
+  // ── Carga de sucursales ───────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchTiendas = async () => {
+      try {
+        const response = await api.get<Tienda[] | { data?: Tienda[] }>(`/tiendas`);
+        const tiendasData = Array.isArray(response.data)
+          ? response.data
+          : Array.isArray(response.data?.data)
+            ? response.data.data
+            : [];
+
+        if (!cancelled) {
+          setTiendas(tiendasData);
+
+          if (isWebMode) {
+            setTiendaSeleccionada('');
+          } else {
+            try {
+              const identidadRes = await api.get<IdentidadConfig | { data?: IdentidadConfig }>(`/config/identidad`);
+              const identidadRaw = identidadRes.data;
+              const identidad: IdentidadConfig =
+                identidadRaw && typeof identidadRaw === 'object' && 'data' in identidadRaw
+                  ? (identidadRaw.data ?? {})
+                  : (identidadRaw as IdentidadConfig);
+
+              const nombreTiendaActual = (identidad?.nombre_tienda ?? '').trim().toLowerCase();
+              const tiendaMatch = tiendasData.find((tienda) => {
+                const nombre = (tienda.nombre ?? tienda.nombre_tienda ?? '').trim().toLowerCase();
+                return nombre && nombre === nombreTiendaActual;
+              });
+
+              if (tiendaMatch?.id) {
+                setTiendaSeleccionada(tiendaMatch.id);
+              }
+            } catch (error) {
+              console.error('Dashboard: error al cargar identidad local desde /config/identidad', error);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Dashboard: error al cargar sucursales desde /tiendas', error);
+        if (!cancelled) {
+          setTiendas([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setFiltroInicialResuelto(true);
+        }
+      }
+    };
+
+    fetchTiendas();
+    return () => { cancelled = true; };
+  }, []);
+
   // ── Fetch de datos ───────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
     const fetchData = async () => {
+      if (!filtroInicialResuelto) return;
+
       try {
         setLoading(true);
         setError(null);
         setStats(null);
         setAnaliticas({ rendimientoVendedores: [], reporteCajas: [] });
 
+        const params = {
+          fecha,
+          ...(tiendaSeleccionada ? { tienda_id: tiendaSeleccionada } : {}),
+        };
+
         const [statsRes, analiticasRes] = await Promise.all([
-          api.get<Stats>(`/dashboard/stats`, { params: { fecha } }),
-          api.get<Analiticas>(`/dashboard/analiticas`, { params: { fecha } }),
+          api.get<Stats>(`/dashboard/stats`, { params }),
+          api.get<Analiticas>(`/dashboard/analiticas`, { params }),
         ]);
 
         if (!cancelled) {
@@ -225,7 +303,7 @@ export default function Dashboard() {
 
     fetchData();
     return () => { cancelled = true; };
-  }, [fecha, retryCount]);
+  }, [fecha, retryCount, tiendaSeleccionada, filtroInicialResuelto]);
 
   // ── Sincronización manual con la nube ────────────────────────────────────
   const handleSync = async () => {
@@ -325,24 +403,41 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center w-full md:w-auto">
             {/* Selector de fecha */}
-            <div className="relative">
+            <div className="relative w-full md:w-auto">
               <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               <input
                 type="date"
                 value={fecha}
                 max={hoy()}
                 onChange={(e) => setFecha(e.target.value)}
-                className="pl-9 pr-4 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition cursor-pointer"
+                className="w-full md:w-auto pl-9 pr-4 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition cursor-pointer"
               />
+            </div>
+
+            {/* Selector de sucursal */}
+            <div className="relative w-full md:w-auto">
+              <Store size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <select
+                value={tiendaSeleccionada}
+                onChange={(e) => setTiendaSeleccionada(e.target.value)}
+                className="w-full md:w-auto md:min-w-48 pl-9 pr-9 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition appearance-none cursor-pointer"
+              >
+                <option value="">Todas las sucursales</option>
+                {tiendas.map((tienda) => (
+                  <option key={tienda.id} value={tienda.id}>
+                    {tienda.nombre ?? tienda.nombre_tienda ?? tienda.id}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Botón volver a hoy */}
             {fecha !== hoy() && (
               <button
                 onClick={() => setFecha(hoy())}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 transition-colors"
+                className="w-full md:w-auto flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 transition-colors"
               >
                 <RefreshCw size={12} />
                 Hoy
@@ -353,7 +448,7 @@ export default function Dashboard() {
             <button
               onClick={handleSync}
               disabled={isSyncing}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed border border-indigo-700 transition-colors shadow-sm"
+              className="w-full md:w-auto flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed border border-indigo-700 transition-colors shadow-sm"
             >
               <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} />
               {isSyncing ? 'Sincronizando...' : 'Sincronizar Nube'}

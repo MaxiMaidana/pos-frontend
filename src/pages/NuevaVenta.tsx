@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
 import api from '../api/axiosClient';
 import SyncButton from '../components/SyncButton';
 import {
@@ -24,7 +25,7 @@ interface Producto {
   id: string;
   nombre: string;
   precio_actual: number;
-  stock: number;
+  stock_local: number;
 }
 
 interface ItemCarrito {
@@ -32,6 +33,7 @@ interface ItemCarrito {
   nombre: string;
   precio_unitario_historico: number;
   cantidad: number;
+  stock_local: number;
 }
 
 interface MetaPaginacion {
@@ -142,10 +144,18 @@ export default function NuevaVenta() {
 
   // ── Acciones del carrito ─────────────────────────────────────────────────
   const agregarAlCarrito = (producto: Producto) => {
-    if (!permitirStockNegativo && producto.stock <= 0) return;
+    if (!permitirStockNegativo && producto.stock_local <= 0) {
+      toast.error('Stock insuficiente');
+      return;
+    }
+    const existente = carrito.find((i) => i.producto_id === producto.id);
+    if (existente && !permitirStockNegativo && existente.cantidad >= producto.stock_local) {
+      toast.error('Stock insuficiente');
+      return;
+    }
     setCarrito((prev) => {
-      const existente = prev.find((i) => i.producto_id === producto.id);
-      if (existente) {
+      const item = prev.find((i) => i.producto_id === producto.id);
+      if (item) {
         return prev.map((i) =>
           i.producto_id === producto.id
             ? { ...i, cantidad: i.cantidad + 1 }
@@ -159,12 +169,20 @@ export default function NuevaVenta() {
           nombre: producto.nombre,
           precio_unitario_historico: producto.precio_actual,
           cantidad: 1,
-        }, 
+          stock_local: producto.stock_local,
+        },
       ];
     });
   };
 
   const cambiarCantidad = (producto_id: string, delta: number) => {
+    if (delta > 0 && !permitirStockNegativo) {
+      const item = carrito.find((i) => i.producto_id === producto_id);
+      if (item && item.cantidad >= item.stock_local) {
+        toast.error('Stock insuficiente');
+        return;
+      }
+    }
     setCarrito((prev) =>
       prev
         .map((i) =>
@@ -328,7 +346,7 @@ export default function NuevaVenta() {
             <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
               {productos.map((producto) => {
                 const enCarrito = cantidadEnCarrito(producto.id);
-                const sinStock = producto.stock <= 0;
+                const sinStock = producto.stock_local <= 0;
                 // En modo transición, solo se bloquea por falta de vendedor
                 const bloqueada = !vendedorNombre || (!permitirStockNegativo && sinStock);
                 return (
@@ -374,13 +392,13 @@ export default function NuevaVenta() {
                         {permitirStockNegativo ? (
                           <>
                             <AlertTriangle size={10} />
-                            Stock: {producto.stock}
+                            Stock: {producto.stock_local}
                           </>
                         ) : 'Sin stock'}
                       </p>
                     ) : (
                       <p className="text-xs font-medium mt-1 text-emerald-500">
-                        {producto.stock} disponibles
+                        {producto.stock_local} disponibles
                       </p>
                     )}
                   </button>
@@ -578,11 +596,7 @@ export default function NuevaVenta() {
                       </span>
                       <button
                         onClick={() => cambiarCantidad(item.producto_id, 1)}
-                        disabled={(() => {
-                          if (permitirStockNegativo) return false;
-                          const prod = productos.find((p) => p.id === item.producto_id);
-                          return prod ? item.cantidad >= prod.stock : false;
-                        })()}
+                        disabled={!permitirStockNegativo && item.cantidad >= item.stock_local}
                         className="w-6 h-6 rounded-md bg-gray-100 hover:bg-indigo-100 hover:text-indigo-500 text-gray-500 flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         <Plus size={12} />
