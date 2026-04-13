@@ -70,6 +70,12 @@ interface CajaAnalitica {
   cajero_nombre: string;
   estado: 'ABIERTA' | 'CERRADA' | string;
   monto_inicial: number;
+  ventas_efectivo?: number;       // Nuevos campos del backend
+  ingresos?: number;              // Alias posible del backend
+  retiros?: number;               // Alias posible del backend
+  pagos?: { efectivo?: number };  // Alias posible del backend
+  total_ingresos?: number;        // Ingresos manuales registrados
+  total_retiros?: number;         // Retiros manuales registrados
   monto_esperado: number;
   monto_cierre: number | null;
   desglosePagos: DesglosePagos;
@@ -613,7 +619,16 @@ export default function Dashboard() {
                       const bFecha = b.fecha_apertura ?? b.id;
                       return bFecha.localeCompare(aFecha);
                     }).map((caja) => {
-                    const montoEsperado = Number(caja?.monto_esperado) || 0;
+                    const montoInicial = Number(caja?.monto_inicial) || 0;
+                    const ventasEfectivo = Number(
+                      caja?.ventas_efectivo
+                      ?? caja?.pagos?.efectivo
+                      ?? caja?.desglosePagos?.EFECTIVO
+                      ?? 0
+                    ) || 0;
+                    const ingresosManuales = Number(caja?.total_ingresos ?? caja?.ingresos ?? 0) || 0;
+                    const retirosManuales = Number(caja?.total_retiros ?? caja?.retiros ?? 0) || 0;
+                    const montoEsperado = montoInicial + ventasEfectivo + ingresosManuales - retirosManuales;
                     const montoCierre = caja?.monto_cierre != null ? Number(caja.monto_cierre) : null;
                     const diferencia = montoCierre !== null ? montoCierre - montoEsperado : null;
 
@@ -647,69 +662,98 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        {/* Grid de montos */}
-                        <div className="grid grid-cols-3 gap-2 mb-3">
-                          <div className="bg-gray-50 rounded-xl px-3 py-2.5 text-center">
-                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Inicial</p>
-                            <p className="text-sm font-bold text-gray-700">{formatPrecio(Number(caja?.monto_inicial ?? 0))}</p>
+                        {/* Desglose detallado del cálculo */}
+                        <div className="bg-gradient-to-br from-gray-50 to-gray-25 rounded-xl p-4 mb-3 border border-gray-100 space-y-1.5 text-xs">
+                          {/* Inicial */}
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 font-medium">Inicial</span>
+                            <span className="font-bold text-gray-700">{formatPrecio(montoInicial)}</span>
                           </div>
-                          <div className="bg-emerald-50 rounded-xl px-3 py-2.5 text-center">
-                            <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wide mb-1">Esperado</p>
-                            <p className="text-sm font-bold text-emerald-700">{formatPrecio(montoEsperado)}</p>
+                          
+                          {/* Ventas en efectivo */}
+                          <div className="flex justify-between items-center text-emerald-600">
+                            <span className="font-medium">+ Ventas en efectivo</span>
+                            <span className="font-bold">{formatPrecio(ventasEfectivo)}</span>
                           </div>
-                          <div className={`rounded-xl px-3 py-2.5 text-center ${
-                            caja?.estado === 'ABIERTA'
-                              ? 'bg-gray-50'
-                              : diferencia === 0
-                              ? 'bg-emerald-50'
-                              : diferencia !== null && diferencia < 0
-                              ? 'bg-red-50'
-                              : diferencia !== null && diferencia > 0
-                              ? 'bg-sky-50'
-                              : 'bg-gray-50'
-                          }`}>
-                            <p className="text-[10px] font-semibold uppercase tracking-wide mb-1 text-gray-400">Cierre</p>
-                            {caja.estado === 'ABIERTA' ? (
-                              <span className="text-gray-400 font-medium">—</span>
-                            ) : (
-                              <div className="flex flex-col items-center gap-1">
-                                <span className="font-bold text-gray-800">
-                                  {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(caja.monto_cierre) || 0)}
-                                </span>
-                                {(() => {
-                                  const diferencia = (Number(caja.monto_cierre) || 0) - (Number(caja.monto_esperado) || 0);
-                                  if (diferencia === 0) return <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">✅ OKEY</span>;
-                                  if (diferencia < 0) return <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded">❌ Falta: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(diferencia)}</span>;
-                                  return <span className="text-xs font-bold text-yellow-600 bg-yellow-100 px-2 py-1 rounded">⚠️ Sobra: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(diferencia)}</span>;
-                                })()}
+                          
+                          {/* Ingresos manuales (SIEMPRE visible) */}
+                          <div className={`flex justify-between items-center ${ingresosManuales > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
+                            <span className="font-medium">+ Ingresos manuales</span>
+                            <span className="font-bold">{formatPrecio(ingresosManuales)}</span>
+                          </div>
+                          
+                          {/* Retiros (SIEMPRE visible) */}
+                          <div className={`flex justify-between items-center ${retirosManuales > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                            <span className="font-medium">− Retiros</span>
+                            <span className="font-bold">{formatPrecio(retirosManuales)}</span>
+                          </div>
+                          
+                          {/* Separador */}
+                          <div className="h-px bg-gray-200 my-1" />
+                          
+                          {/* Total esperado */}
+                          <div className="flex justify-between items-center text-indigo-700">
+                            <span className="font-bold">= Total esperado</span>
+                            <span className="font-black text-base">{formatPrecio(montoEsperado)}</span>
+                          </div>
+                        </div>
+                        
+                        {/* Cierre contado y diferencia */}
+                        <div className={`rounded-xl px-4 py-3 text-center border-2 mb-3 ${
+                          caja?.estado === 'ABIERTA'
+                            ? 'bg-gray-50 border-gray-200'
+                            : diferencia === 0
+                            ? 'bg-emerald-50 border-emerald-200'
+                            : diferencia !== null && diferencia < 0
+                            ? 'bg-red-50 border-red-200'
+                            : diferencia !== null && diferencia > 0
+                            ? 'bg-sky-50 border-sky-200'
+                            : 'bg-gray-50 border-gray-200'
+                        }`}>
+                          {caja.estado === 'ABIERTA' ? (
+                            <p className="text-gray-400 font-medium text-sm">Sesión abierta</p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              <div>
+                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Efectivo contado</p>
+                                <p className="text-lg font-black text-gray-800">
+                                  {formatPrecio(Number(caja.monto_cierre) || 0)}
+                                </p>
                               </div>
-                            )}
-                          </div>
+                              {(() => {
+                                const diferencia = (Number(caja.monto_cierre) || 0) - montoEsperado;
+                                if (diferencia === 0) return <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded inline-block">✅ Cuadra exacto</span>;
+                                if (diferencia < 0) return <span className="text-xs font-bold text-red-700 bg-red-100 px-2 py-1 rounded inline-block">❌ Faltan {formatPrecio(Math.abs(diferencia))}</span>;
+                                return <span className="text-xs font-bold text-sky-700 bg-sky-100 px-2 py-1 rounded inline-block">⚠️ Sobran {formatPrecio(diferencia)}</span>;
+                              })()}
+                            </div>
+                          )}
                         </div>
 
                         {/* Desglose de pagos */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mr-1">Cobrado por:</span>
+                        <div className="pt-2 border-t border-gray-100 space-y-2">
+                          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Desglose de pagos cobrados:</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-teal-50 text-teal-700 text-xs font-semibold border border-teal-100">
+                              <Banknote size={12} />
+                              Efectivo: {formatPrecio(Number(caja.desglosePagos?.EFECTIVO) || 0)}
+                            </span>
 
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-teal-50 text-teal-700 text-xs font-semibold border border-teal-100">
-                            <Banknote size={11} />
-                            Efectivo {formatPrecio(Number(caja.desglosePagos?.EFECTIVO) || 0)}
-                          </span>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100">
+                              <CreditCard size={12} />
+                              Débito: {formatPrecio(Number(caja.desglosePagos?.TARJETA_DEBITO) || 0)}
+                            </span>
 
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100">
-                            <CreditCard size={11} />
-                            Débito {formatPrecio(Number(caja.desglosePagos?.TARJETA_DEBITO) || 0)}
-                          </span>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-50 text-violet-700 text-xs font-semibold border border-violet-100">
+                              <CreditCard size={12} />
+                              Crédito: {formatPrecio(Number(caja.desglosePagos?.TARJETA_CREDITO) || 0)}
+                            </span>
 
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-50 text-violet-700 text-xs font-semibold border border-violet-100">
-                            <CreditCard size={11} />
-                            Crédito {formatPrecio(Number(caja.desglosePagos?.TARJETA_CREDITO) || 0)}
-                          </span>
-
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-50 text-sky-700 text-xs font-semibold border border-sky-100">
-                            <ArrowRightLeft size={11} />
-                            Transfer. {formatPrecio(Number(caja.desglosePagos?.TRANSFERENCIA) || 0)}
-                          </span>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-50 text-sky-700 text-xs font-semibold border border-sky-100">
+                              <ArrowRightLeft size={12} />
+                              Transfer.: {formatPrecio(Number(caja.desglosePagos?.TRANSFERENCIA) || 0)}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     );

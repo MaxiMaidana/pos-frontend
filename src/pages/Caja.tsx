@@ -22,6 +22,7 @@ import {
   Building2,
   DollarSign,
   Info,
+  Banknote,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -67,6 +68,22 @@ interface CajaDisponible {
   nombre: string;
 }
 
+type TipoMovimiento = 'RETIRO' | 'INGRESO';
+
+interface FormMovimiento {
+  tipo: TipoMovimiento;
+  monto: string;
+  motivo: string;
+}
+
+interface Arqueo {
+  monto_inicial: number;
+  ventas_efectivo?: number;        // Campo que envía el backend
+  total_retiros?: number;
+  total_ingresos?: number;
+  total_esperado?: number;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 
@@ -101,6 +118,21 @@ export default function Caja() {
   const [cajasDisponibles, setCajasDisponibles] = useState<CajaDisponible[]>([]);
   const [formApertura, setFormApertura] = useState({ cajero_nombre: '', monto_inicial: '', caja_id: '' });
   const [isAbriendo, setIsAbriendo] = useState(false);
+
+  // ── Movimientos de caja ──────────────────────────────────────────────────
+  const [modalMovimiento, setModalMovimiento] = useState(false);
+  const [formMovimiento, setFormMovimiento] = useState<FormMovimiento>({
+    tipo: 'RETIRO',
+    monto: '',
+    motivo: '',
+  });
+  const [isMovimiento, setIsMovimiento] = useState(false);
+
+  // ── Cierre de turno ──────────────────────────────────────────────────────
+  const [modalCierre, setModalCierre] = useState(false);
+  const [arqueo, setArqueo] = useState<Arqueo | null>(null);
+  const [montoCierre, setMontoCierre] = useState('');
+  const [isLoadingArqueo, setIsLoadingArqueo] = useState(false);
 
   // ── Fetch ventas pendientes ──────────────────────────────────────────────
   const fetchVentas = useCallback(async () => {
@@ -298,28 +330,75 @@ export default function Caja() {
   };
 
   // ── Cerrar turno ───────────────────────────────────────────────────────────────
-  const handleCerrarTurno = async () => {
+  // ── Movimiento de caja (retiro / ingreso) ───────────────────────────────────────
+  const handleAgregarMovimiento = async () => {
     if (!sesion) return;
-    const input = window.prompt('Ingresá el monto de efectivo en el cajón al cierre:');
-    if (input === null) return; // canceló
-    const monto_cierre = parseFloat(input);
-    if (isNaN(monto_cierre)) {
+    const monto = parseFloat(formMovimiento.monto);
+    if (isNaN(monto) || monto <= 0) {
+      alert('Ingresá un monto válido mayor a cero.');
+      return;
+    }
+    if (!formMovimiento.motivo.trim()) {
+      alert('Ingresá un motivo para el movimiento.');
+      return;
+    }
+    try {
+      setIsMovimiento(true);
+      await api.post(`/caja/${sesion.caja_id}/movimiento`, {
+        tipo: formMovimiento.tipo,
+        monto,
+        motivo: formMovimiento.motivo.trim(),
+        sesion_id: sesion.sesion_id,
+      });
+      setModalMovimiento(false);
+      setFormMovimiento({ tipo: 'RETIRO', monto: '', motivo: '' });
+      alert(`✅ ${formMovimiento.tipo === 'RETIRO' ? 'Retiro' : 'Ingreso'} registrado correctamente.`);
+    } catch {
+      alert('❌ Error al registrar el movimiento. Intentá de nuevo.');
+    } finally {
+      setIsMovimiento(false);
+    }
+  };
+
+  // ── Cerrar turno: obtiene arqueo y abre modal ──────────────────────────────────
+  const handleAbrirCierre = async () => {
+    if (!sesion) return;
+    setIsLoadingArqueo(true);
+    try {
+      const { data } = await api.get<Arqueo>(`/caja/${sesion.caja_id}/arqueo`);
+      setArqueo(data);
+    } catch {
+      setArqueo(null);
+    } finally {
+      setIsLoadingArqueo(false);
+    }
+    setMontoCierre('');
+    setModalCierre(true);
+  };
+
+  const handleConfirmarCierre = async () => {
+    if (!sesion) return;
+    const monto_cierre = parseFloat(montoCierre);
+    if (isNaN(monto_cierre) || monto_cierre < 0) {
       alert('El monto ingresado no es válido. Usá solo números.');
       return;
     }
     try {
       setIsSubmitting(true);
-      await api.post(`/caja/${sesion.caja_id}/cerrar`, { 
-        monto_efectivo_contado: monto_cierre, 
-        sesion_id: sesion.sesion_id 
+      await api.post(`/caja/${sesion.caja_id}/cerrar`, {
+        monto_efectivo_contado: monto_cierre,
+        sesion_id: sesion.sesion_id,
       });
+      setModalCierre(false);
       localStorage.removeItem('sesion_caja');
       setSesion(null);
       setSeleccionada(null);
       setVentas([]);
+      setArqueo(null);
     } catch (error) {
       if (axios.isAxiosError(error) && (error.response?.status === 400 || error.response?.status === 404)) {
         alert('La sesión de caja ya no existe o fue cerrada en otro lado. Limpiando estado local...');
+        setModalCierre(false);
         localStorage.removeItem('sesion_caja');
         setSesion(null);
         setSeleccionada(null);
@@ -487,14 +566,23 @@ export default function Caja() {
             <span className="text-sm text-emerald-100">{sesion.cajero}</span>
           </div>
         </div>
-        <button
-          onClick={handleCerrarTurno}
-          disabled={isSubmitting}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white border border-emerald-500 transition-colors disabled:opacity-50"
-        >
-          <LogOut size={13} />
-          Cerrar turno
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setModalMovimiento(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white border border-emerald-500 transition-colors"
+          >
+            <Banknote size={13} />
+            Retiro / Ingreso
+          </button>
+          <button
+            onClick={handleAbrirCierre}
+            disabled={isSubmitting || isLoadingArqueo}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white border border-emerald-500 transition-colors disabled:opacity-50"
+          >
+            {isLoadingArqueo ? <Loader2 size={13} className="animate-spin" /> : <LogOut size={13} />}
+            Cerrar turno
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -1090,6 +1178,261 @@ export default function Caja() {
 
       </div>
       </div>{/* /hidden md:flex */}
+
+      {/* ══ Modal: Movimiento de Caja ══════════════════════════════════════════════ */}
+      {modalMovimiento && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setModalMovimiento(false); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-50 rounded-xl">
+                  <Banknote size={16} className="text-amber-600" />
+                </div>
+                <h2 className="text-base font-bold text-gray-800">Retiro / Ingreso de Dinero</h2>
+              </div>
+              <button
+                onClick={() => setModalMovimiento(false)}
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              {/* Tipo */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Tipo de movimiento
+                </label>
+                <div className="flex rounded-xl bg-gray-100 p-1 gap-1">
+                  <button
+                    onClick={() => setFormMovimiento((prev) => ({ ...prev, tipo: 'RETIRO' }))}
+                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${
+                      formMovimiento.tipo === 'RETIRO'
+                        ? 'bg-white text-red-600 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Retiro
+                  </button>
+                  <button
+                    onClick={() => setFormMovimiento((prev) => ({ ...prev, tipo: 'INGRESO' }))}
+                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${
+                      formMovimiento.tipo === 'INGRESO'
+                        ? 'bg-white text-emerald-600 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Ingreso
+                  </button>
+                </div>
+              </div>
+
+              {/* Monto */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Monto
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400 pointer-events-none">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formMovimiento.monto}
+                    onChange={(e) => setFormMovimiento((prev) => ({ ...prev, monto: e.target.value }))}
+                    placeholder="0.00"
+                    autoFocus
+                    className="w-full pl-7 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                  />
+                </div>
+              </div>
+
+              {/* Motivo */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Motivo
+                </label>
+                <input
+                  type="text"
+                  value={formMovimiento.motivo}
+                  onChange={(e) => setFormMovimiento((prev) => ({ ...prev, motivo: e.target.value }))}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAgregarMovimiento()}
+                  placeholder="Ej: Pago a proveedor, fondo de cambio..."
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <button
+                onClick={() => { setModalMovimiento(false); setFormMovimiento({ tipo: 'RETIRO', monto: '', motivo: '' }); }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAgregarMovimiento}
+                disabled={isMovimiento || !formMovimiento.monto || !formMovimiento.motivo.trim()}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+                  isMovimiento || !formMovimiento.monto || !formMovimiento.motivo.trim()
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : formMovimiento.tipo === 'RETIRO'
+                      ? 'bg-red-500 hover:bg-red-600 text-white'
+                      : 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                }`}
+              >
+                {isMovimiento
+                  ? <><Loader2 size={15} className="animate-spin" /> Registrando...</>
+                  : `Confirmar ${formMovimiento.tipo === 'RETIRO' ? 'Retiro' : 'Ingreso'}`
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Modal: Cierre de Turno con Arqueo ══════════════════════════════════════ */}
+      {modalCierre && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget && !isSubmitting) setModalCierre(false); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-50 rounded-xl">
+                  <LogOut size={16} className="text-red-500" />
+                </div>
+                <h2 className="text-base font-bold text-gray-800">Cierre de Turno</h2>
+              </div>
+              <button
+                onClick={() => !isSubmitting && setModalCierre(false)}
+                disabled={isSubmitting}
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors disabled:opacity-40"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              {/* Desglose del arqueo */}
+              {arqueo && (() => {
+                // Extract values with explicit type coercion
+                const monto_inicial = Number(arqueo.monto_inicial) || 0;
+                const ventas_efectivo = Number(arqueo.ventas_efectivo) || 0;
+                const total_ingresos = Number(arqueo.total_ingresos) || 0;
+                const total_retiros = Number(arqueo.total_retiros) || 0;
+                
+                // Calcular explícitamente el total esperado en el cajón
+                const totalEsperado = monto_inicial + ventas_efectivo + total_ingresos - total_retiros;
+                
+                return (
+                  <>
+                    <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm border border-gray-100">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
+                        Resumen del turno
+                      </p>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Efectivo inicial</span>
+                        <span className="font-semibold text-gray-700">{formatPrecio(monto_inicial)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Ventas en efectivo</span>
+                        <span className="font-semibold text-emerald-600">+{formatPrecio(ventas_efectivo)}</span>
+                      </div>
+                      {total_ingresos > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Ingresos manuales</span>
+                          <span className="font-semibold text-emerald-600">+{formatPrecio(total_ingresos)}</span>
+                        </div>
+                      )}
+                      {total_retiros > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Retiros</span>
+                          <span className="font-semibold text-red-500">−{formatPrecio(total_retiros)}</span>
+                        </div>
+                      )}
+                      <div className="h-px bg-gray-200 my-1" />
+                      <div className="flex justify-between font-bold">
+                        <span className="text-gray-700">Total esperado en cajón</span>
+                        <span className="text-indigo-700">{formatPrecio(totalEsperado)}</span>
+                      </div>
+                    </div>
+
+                    {/* Monto contado */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                        Efectivo contado en el cajón
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400 pointer-events-none">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={montoCierre}
+                          onChange={(e) => setMontoCierre(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleConfirmarCierre()}
+                          placeholder="0.00"
+                          autoFocus
+                          className="w-full pl-7 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                        />
+                      </div>
+                      {/* Diferencia en tiempo real */}
+                      {montoCierre && !isNaN(parseFloat(montoCierre)) && (() => {
+                        const contado = parseFloat(montoCierre);
+                        const diferencia = contado - totalEsperado;
+                        return (
+                          <p className={`text-xs font-semibold mt-1.5 ${
+                            Math.abs(diferencia) < 0.01
+                              ? 'text-emerald-500'
+                              : diferencia > 0 ? 'text-blue-500' : 'text-red-500'
+                          }`}>
+                            {Math.abs(diferencia) < 0.01
+                              ? '✓ Cuadra exacto'
+                              : diferencia > 0
+                                ? `↑ Sobran ${formatPrecio(diferencia)}`
+                                : `↓ Faltan ${formatPrecio(Math.abs(diferencia))}`
+                            }
+                          </p>
+                        );
+                      })()}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <button
+                onClick={() => setModalCierre(false)}
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmarCierre}
+                disabled={isSubmitting || !montoCierre}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+                  isSubmitting || !montoCierre
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                }`}
+              >
+                {isSubmitting
+                  ? <><Loader2 size={15} className="animate-spin" /> Cerrando...</>
+                  : <><LogOut size={15} /> Cerrar Turno</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
