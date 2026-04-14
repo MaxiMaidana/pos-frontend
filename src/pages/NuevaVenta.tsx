@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   ChevronUp,
   X,
+  Zap,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -73,6 +74,11 @@ export default function NuevaVenta() {
   const [inputVendedor, setInputVendedor] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
+
+  // Alta Exprés
+  const [modalAltaOpen, setModalAltaOpen] = useState(false);
+  const [formAlta, setFormAlta] = useState({ nombre: '', precio_actual: '', codigo_barras: '' });
+  const [isCreando, setIsCreando] = useState(false);
 
   // ── Fetch productos ──────────────────────────────────────────────────────
   const fetchProductos = useCallback(async () => {
@@ -199,6 +205,55 @@ export default function NuevaVenta() {
   const cantidadEnCarrito = (producto_id: string) =>
     carrito.find((i) => i.producto_id === producto_id)?.cantidad ?? 0;
 
+  // ── Alta Exprés ─────────────────────────────────────────────────────────
+  const handleCrearProducto = async () => {
+    const nombre = formAlta.nombre.trim();
+    const precio = parseFloat(formAlta.precio_actual);
+    if (!nombre) {
+      toast.error('El nombre del producto es obligatorio.');
+      return;
+    }
+    if (isNaN(precio) || precio <= 0) {
+      toast.error('Ingresá un precio válido mayor a cero.');
+      return;
+    }
+    try {
+      setIsCreando(true);
+      const { data: nuevo } = await api.post<Producto>(`/productos`, {
+        nombre,
+        precio_actual: precio,
+        stock: 0,
+        ...(formAlta.codigo_barras.trim() && { codigo_barras: formAlta.codigo_barras.trim() }),
+      });
+      // Agregar directamente al carrito (stock_local=0, se permite por ser Alta Exprés)
+      setCarrito((prev) => {
+        const existe = prev.find((i) => i.producto_id === nuevo.id);
+        if (existe) {
+          return prev.map((i) =>
+            i.producto_id === nuevo.id ? { ...i, cantidad: i.cantidad + 1 } : i
+          );
+        }
+        return [
+          ...prev,
+          {
+            producto_id: nuevo.id,
+            nombre: nuevo.nombre,
+            precio_unitario_historico: nuevo.precio_actual,
+            cantidad: 1,
+            stock_local: 0,
+          },
+        ];
+      });
+      toast.success('Producto creado y agregado al carrito.');
+      setModalAltaOpen(false);
+      setFormAlta({ nombre: '', precio_actual: '', codigo_barras: '' });
+    } catch {
+      toast.error('Error al crear el producto. Intentá de nuevo.');
+    } finally {
+      setIsCreando(false);
+    }
+  };
+
   // ── Submit ───────────────────────────────────────────────────────────────
   const handleGenerarComanda = async () => {
     if (!vendedorNombre) {
@@ -292,15 +347,25 @@ export default function NuevaVenta() {
             </div>
           </div>
 
-          <div className="relative">
-            <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar producto..."
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
-            />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar producto..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+              />
+            </div>
+            <button
+              onClick={() => setModalAltaOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 text-xs font-bold hover:bg-indigo-100 hover:border-indigo-300 transition-colors shrink-0"
+              title="Crear producto rápido y agregar al carrito"
+            >
+              <Zap size={14} />
+              <span className="hidden sm:inline">Crear Rápido</span>
+            </button>
           </div>
 
           {/* Banner de aviso cuando el modo está activo */}
@@ -659,6 +724,110 @@ export default function NuevaVenta() {
           )}
         </div>
       </div>
+      {/* ══ Modal: Alta Exprés ══════════════════════════════════════════════════ */}
+      {modalAltaOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setModalAltaOpen(false); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-50 rounded-xl">
+                  <Zap size={16} className="text-indigo-600" />
+                </div>
+                <h2 className="text-base font-bold text-gray-800">Alta Exprés</h2>
+              </div>
+              <button
+                onClick={() => setModalAltaOpen(false)}
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Formulario */}
+            <div className="px-6 py-5 space-y-4">
+              {/* Código de barras */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Código de barras <span className="font-normal text-gray-400">(opcional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={formAlta.codigo_barras}
+                  onChange={(e) => setFormAlta((prev) => ({ ...prev, codigo_barras: e.target.value }))}
+                  placeholder="Escaneá o escribí el código…"
+                  autoComplete="off"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                />
+              </div>
+
+              {/* Nombre */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Nombre <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formAlta.nombre}
+                  onChange={(e) => setFormAlta((prev) => ({ ...prev, nombre: e.target.value }))}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCrearProducto()}
+                  placeholder="Ej: Coca Cola 500ml"
+                  autoFocus
+                  autoComplete="off"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                />
+              </div>
+
+              {/* Precio */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Precio de venta <span className="text-red-400">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400 pointer-events-none">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formAlta.precio_actual}
+                    onChange={(e) => setFormAlta((prev) => ({ ...prev, precio_actual: e.target.value }))}
+                    onKeyDown={(e) => e.key === 'Enter' && handleCrearProducto()}
+                    placeholder="0.00"
+                    className="w-full pl-7 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Acciones */}
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <button
+                onClick={() => { setModalAltaOpen(false); setFormAlta({ nombre: '', precio_actual: '', codigo_barras: '' }); }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCrearProducto}
+                disabled={isCreando || !formAlta.nombre.trim() || !formAlta.precio_actual}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+                  isCreando || !formAlta.nombre.trim() || !formAlta.precio_actual
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm'
+                }`}
+              >
+                {isCreando
+                  ? <><Loader2 size={15} className="animate-spin" /> Creando...</>
+                  : <><Zap size={15} /> Guardar y agregar</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

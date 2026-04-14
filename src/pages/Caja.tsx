@@ -757,7 +757,7 @@ export default function Caja() {
           const totalConRecargo = total + montoRecargo;
           const hayRecargo = montoRecargo > 0;
           return (
-            <div className="flex flex-col h-full">
+            <div className="flex flex-col h-full overflow-y-auto">
 
               {/* Header detalle */}
               <div className="p-6 border-b border-gray-100 bg-gray-50">
@@ -778,7 +778,7 @@ export default function Caja() {
               </div>
 
               {/* Tabla de ítems */}
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 min-h-[200px] overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
@@ -825,7 +825,7 @@ export default function Caja() {
               </div>
 
               {/* Footer — Total + cobro */}
-              <div className="p-6 border-t border-gray-100 bg-gray-50 space-y-4">
+              <div className="shrink-0 p-6 border-t border-gray-100 bg-gray-50 space-y-4">
 
                 {/* Descuento + Total */}
                 <div className="space-y-1.5">

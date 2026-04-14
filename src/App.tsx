@@ -330,7 +330,7 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Toaster position="bottom-right" richColors />
+        <Toaster position="top-right" duration={3000} richColors />
         <AppContent />
       </AuthProvider>
     </BrowserRouter>
