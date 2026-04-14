@@ -77,7 +77,7 @@ export default function NuevaVenta() {
 
   // Alta Exprés
   const [modalAltaOpen, setModalAltaOpen] = useState(false);
-  const [formAlta, setFormAlta] = useState({ nombre: '', precio_actual: '', codigo_barras: '' });
+  const [formAlta, setFormAlta] = useState({ nombre: '', precio_actual: '', codigo_barras: '', costo: '' });
   const [isCreando, setIsCreando] = useState(false);
 
   // ── Fetch productos ──────────────────────────────────────────────────────
@@ -223,6 +223,7 @@ export default function NuevaVenta() {
         nombre,
         precio_actual: precio,
         stock: 0,
+        ...(formAlta.costo && !isNaN(parseFloat(formAlta.costo)) ? { costo: parseFloat(formAlta.costo) } : {}),
         ...(formAlta.codigo_barras.trim() && { codigo_barras: formAlta.codigo_barras.trim() }),
       });
       // Agregar directamente al carrito (stock_local=0, se permite por ser Alta Exprés)
@@ -246,7 +247,7 @@ export default function NuevaVenta() {
       });
       toast.success('Producto creado y agregado al carrito.');
       setModalAltaOpen(false);
-      setFormAlta({ nombre: '', precio_actual: '', codigo_barras: '' });
+      setFormAlta({ nombre: '', precio_actual: '', codigo_barras: '', costo: '' });
     } catch {
       toast.error('Error al crear el producto. Intentá de nuevo.');
     } finally {
@@ -800,12 +801,32 @@ export default function NuevaVenta() {
                   />
                 </div>
               </div>
+
+              {/* Costo */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Costo <span className="font-normal text-gray-400">(opcional)</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400 pointer-events-none">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formAlta.costo}
+                    onChange={(e) => setFormAlta((prev) => ({ ...prev, costo: e.target.value }))}
+                    onKeyDown={(e) => e.key === 'Enter' && handleCrearProducto()}
+                    placeholder="0.00"
+                    className="w-full pl-7 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Acciones */}
             <div className="flex gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
               <button
-                onClick={() => { setModalAltaOpen(false); setFormAlta({ nombre: '', precio_actual: '', codigo_barras: '' }); }}
+                onClick={() => { setModalAltaOpen(false); setFormAlta({ nombre: '', precio_actual: '', codigo_barras: '', costo: '' }); }}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
               >
                 Cancelar

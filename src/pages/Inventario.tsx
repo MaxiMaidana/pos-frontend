@@ -32,6 +32,10 @@ interface Producto {
   nombre: string;
   codigo_barras?: string;
   precio_actual: number;
+  costo?: number;
+  marca?: string;
+  categoria?: string;
+  proveedor?: string;
   stock_local: number;
   stock_otro?: number | null;
   activo?: boolean;
@@ -41,6 +45,10 @@ interface FormProducto {
   nombre: string;
   codigo_barras: string;
   precio_actual: string;
+  costo: string;
+  marca: string;
+  categoria: string;
+  proveedor: string;
   stock: string;
 }
 
@@ -62,6 +70,10 @@ const FORM_VACIO: FormProducto = {
   nombre: '',
   codigo_barras: '',
   precio_actual: '',
+  costo: '',
+  marca: '',
+  categoria: '',
+  proveedor: '',
   stock: '',
 };
 
@@ -148,6 +160,10 @@ export default function Inventario() {
       nombre: producto.nombre,
       codigo_barras: producto.codigo_barras ?? '',
       precio_actual: String(producto.precio_actual),
+      costo: producto.costo != null ? String(producto.costo) : '',
+      marca: producto.marca ?? '',
+      categoria: producto.categoria ?? '',
+      proveedor: producto.proveedor ?? '',
       stock: String(producto.stock_local),
     });
     setErrorForm(null);
@@ -179,6 +195,10 @@ export default function Inventario() {
       nombre: form.nombre.trim(),
       codigo_barras: form.codigo_barras.trim() || undefined,
       precio_actual: parseFloat(form.precio_actual),
+      costo: form.costo ? parseFloat(form.costo) : undefined,
+      marca: form.marca.trim() || undefined,
+      categoria: form.categoria.trim() || undefined,
+      proveedor: form.proveedor.trim() || undefined,
       stock: form.stock ? parseInt(form.stock) : 0,
     };
 
@@ -433,7 +453,13 @@ export default function Inventario() {
                     Código de Barras
                   </th>
                   <th className="text-right text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
-                    Precio Actual
+                    Precio
+                  </th>
+                  <th className="text-right text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                    Costo
+                  </th>
+                  <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                    Marca
                   </th>
                   <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
                     Stock
@@ -484,6 +510,28 @@ export default function Inventario() {
                         <span className="font-bold text-gray-800">
                           {formatPrecio(producto.precio_actual)}
                         </span>
+                      </td>
+
+                      {/* Costo */}
+                      <td className="px-4 py-4 text-right">
+                        {producto.costo != null ? (
+                          <span className="text-sm text-gray-500">
+                            {formatPrecio(producto.costo)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
+                      </td>
+
+                      {/* Marca */}
+                      <td className="px-4 py-4">
+                        {producto.marca ? (
+                          <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-md">
+                            {producto.marca}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
                       </td>
 
                       {/* Stock */}
@@ -731,6 +779,67 @@ export default function Inventario() {
                   </div>
                 </div>
               </div>
+
+              {/* Costo */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Costo <span className="text-gray-300 font-normal normal-case">(opcional)</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none font-bold">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.costo}
+                    onChange={(e) => handleCampo('costo', e.target.value)}
+                    placeholder="0.00"
+                    className="w-full pl-7 pr-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                  />
+                </div>
+              </div>
+
+              {/* Marca y Categoría */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                    Marca
+                  </label>
+                  <input
+                    type="text"
+                    value={form.marca}
+                    onChange={(e) => handleCampo('marca', e.target.value)}
+                    placeholder="Ej: Arcor"
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                    Categoría
+                  </label>
+                  <input
+                    type="text"
+                    value={form.categoria}
+                    onChange={(e) => handleCampo('categoria', e.target.value)}
+                    placeholder="Ej: Bebidas"
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                  />
+                </div>
+              </div>
+
+              {/* Proveedor */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Proveedor
+                </label>
+                <input
+                  type="text"
+                  value={form.proveedor}
+                  onChange={(e) => handleCampo('proveedor', e.target.value)}
+                  placeholder="Ej: Distribuidora Norte"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                />
+              </div>
             </div>
 
             {/* Footer del modal */}
@@ -744,11 +853,12 @@ export default function Inventario() {
               </button>
               <button
                 onClick={handleGuardar}
-                disabled={isGuardando}
+                disabled={isGuardando || !form.nombre.trim() || !(parseFloat(form.precio_actual) > 0)}
                 className={`
                   flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200
-                  ${isGuardando
-                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                  ${isGuardando || !form.nombre.trim() || !(parseFloat(form.precio_actual) > 0)
+                    ? 'bg-gray-200 text-gray-400'
                     : 'bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-md shadow-indigo-100'
                   }
                 `}
