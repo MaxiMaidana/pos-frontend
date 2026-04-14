@@ -267,14 +267,24 @@ export default function Inventario() {
       header: true,
       skipEmptyLines: true,
       complete: async (results) => {
+        // Normaliza formato argentino "$16.909,20" → 16909.20
+        const parsePrecioAR = (val?: string): number => {
+          if (!val) return 0;
+          const limpio = val.replace(/\$/g, '').replace(/\./g, '').replace(',', '.').trim();
+          return parseFloat(limpio) || 0;
+        };
+
         const productos = results.data
           .map((row) => ({
-            codigo_barras: row.codigo_barras?.trim() || undefined,
-            nombre: row.nombre?.trim(),
-            precio_actual: parseFloat(row.precio_actual ?? '0') || 0,
-            stock: parseInt(row.stock ?? '0') || 0,
+            codigo_barras: (row.CODIGO ?? row.codigo_barras)?.trim() || undefined,
+            nombre:        (row.PRODUCTO ?? row.nombre)?.trim(),
+            precio_actual: parsePrecioAR(row.VENTA ?? row.SUGERIDO ?? row.precio_actual),
+            costo:         parsePrecioAR(row.COSTO ?? row.costo) || undefined,
+            marca:         (row.MARCA ?? row.marca)?.trim() || undefined,
+            proveedor:     (row.PROVEEDOR ?? row.proveedor)?.trim() || undefined,
+            stock:         parseInt((row.STOCK ?? row.stock) ?? '0') || 0,
           }))
-          .filter((p) => p.nombre);
+          .filter((p) => p.nombre && p.nombre.length > 0);
 
         if (productos.length === 0) {
           toast.error('El archivo CSV no contiene filas válidas.');

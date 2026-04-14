@@ -511,10 +511,10 @@ export default function Caja() {
 
               <button
                 type="submit"
-                disabled={isAbriendo || !formApertura.cajero_nombre.trim() || !formApertura.caja_id}
+                disabled={isAbriendo || !formApertura.cajero_nombre.trim() || !formApertura.caja_id || !(parseFloat(formApertura.monto_inicial) >= 0 && formApertura.monto_inicial.trim() !== '')}
                 className={`
                   w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 mt-2
-                  ${isAbriendo || !formApertura.cajero_nombre.trim() || !formApertura.caja_id
+                  ${isAbriendo || !formApertura.cajero_nombre.trim() || !formApertura.caja_id || !(parseFloat(formApertura.monto_inicial) >= 0 && formApertura.monto_inicial.trim() !== '')
                     ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                     : 'bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-lg shadow-indigo-100 hover:shadow-indigo-200'
                   }
