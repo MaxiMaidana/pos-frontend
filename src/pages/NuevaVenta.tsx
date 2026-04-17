@@ -27,6 +27,8 @@ interface Producto {
   nombre: string;
   precio_actual: number;
   stock_local: number;
+  marca?: string;
+  categoria?: string;
 }
 
 interface ItemCarrito {
@@ -421,7 +423,7 @@ export default function NuevaVenta() {
                     onClick={() => agregarAlCarrito(producto)}
                     disabled={bloqueada}
                     className={`
-                      relative text-left bg-white rounded-xl p-4 shadow-sm border transition-all duration-150
+                      relative text-left bg-white rounded-xl p-3 shadow-sm border transition-all duration-150
                       ${bloqueada
                         ? 'opacity-50 cursor-not-allowed border-gray-200'
                         : 'border-gray-200 hover:border-indigo-400 hover:shadow-md active:scale-[0.98] cursor-pointer'
@@ -437,13 +439,20 @@ export default function NuevaVenta() {
                       </span>
                     )}
 
-                    <div className="flex items-start gap-2 mb-3">
+                    <div className="flex items-start gap-2 mb-2">
                       <div className={`p-1.5 rounded-lg ${sinStock && permitirStockNegativo ? 'bg-amber-50' : 'bg-indigo-50'}`}>
                         <Tag size={14} className={sinStock && permitirStockNegativo ? 'text-amber-500' : 'text-indigo-500'} />
                       </div>
-                      <p className="text-sm font-semibold text-gray-800 leading-tight line-clamp-2 flex-1">
-                        {producto.nombre}
-                      </p>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 leading-tight line-clamp-2">
+                          {producto.nombre}
+                        </p>
+                        {(producto.marca || producto.categoria) && (
+                          <p className="text-[11px] text-gray-400 mt-0.5 truncate">
+                            {[producto.marca, producto.categoria].filter(Boolean).join(' | ')}
+                          </p>
+                        )}
+                      </div>
                     </div>
 
                     <p className="text-lg font-black text-indigo-600 mt-auto">

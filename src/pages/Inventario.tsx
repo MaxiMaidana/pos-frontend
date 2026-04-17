@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Papa from 'papaparse';
 import { toast } from 'sonner';
 import api from '../api/axiosClient';
@@ -38,6 +38,7 @@ interface Producto {
   proveedor?: string;
   stock_local: number;
   stock_otro?: number | null;
+  stock_minimo: number;
   activo?: boolean;
 }
 
@@ -50,6 +51,7 @@ interface FormProducto {
   categoria: string;
   proveedor: string;
   stock: string;
+  stock_minimo: string;
 }
 
 interface MetaPaginacion {
@@ -63,7 +65,6 @@ type ModoModal = 'crear' | 'editar';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STOCK_BAJO = 5;
 const LIMIT = 15;
 
 const FORM_VACIO: FormProducto = {
@@ -75,6 +76,7 @@ const FORM_VACIO: FormProducto = {
   categoria: '',
   proveedor: '',
   stock: '',
+  stock_minimo: '5',
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -113,6 +115,9 @@ export default function Inventario() {
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  // Producto en vista de detalle (solo lectura)
+  const [productoViendo, setProductoViendo] = useState<Producto | null>(null);
+
   // ── Fetch productos ──────────────────────────────────────────────────────
   const fetchProductos = useCallback(async () => {
     try {
@@ -144,6 +149,19 @@ export default function Inventario() {
     return () => clearTimeout(timer);
   }, [busqueda]);
 
+  // ── Filtro ampliado (client-side): marca, categoría, proveedor ──────────
+  const productosFiltrados = useMemo(() => {
+    if (!debouncedSearch) return productos;
+    const term = debouncedSearch.toLowerCase();
+    return productos.filter((p) =>
+      p.nombre.toLowerCase().includes(term) ||
+      p.codigo_barras?.toLowerCase().includes(term) ||
+      p.marca?.toLowerCase().includes(term) ||
+      p.categoria?.toLowerCase().includes(term) ||
+      p.proveedor?.toLowerCase().includes(term)
+    );
+  }, [productos, debouncedSearch]);
+
   // ── Acciones modal ───────────────────────────────────────────────────────
   const abrirModalCrear = () => {
     setModoModal('crear');
@@ -165,6 +183,7 @@ export default function Inventario() {
       categoria: producto.categoria ?? '',
       proveedor: producto.proveedor ?? '',
       stock: String(producto.stock_local),
+      stock_minimo: String(producto.stock_minimo ?? 5),
     });
     setErrorForm(null);
     setModalAbierto(true);
@@ -200,6 +219,7 @@ export default function Inventario() {
       categoria: form.categoria.trim() || undefined,
       proveedor: form.proveedor.trim() || undefined,
       stock: form.stock ? parseInt(form.stock) : 0,
+      stock_minimo: form.stock_minimo ? parseInt(form.stock_minimo) : 5,
     };
 
     try {
@@ -433,7 +453,7 @@ export default function Inventario() {
         )}
 
         {/* Sin resultados de búsqueda */}
-        {!isLoading && !error && productos.length === 0 && (
+        {!isLoading && !error && productosFiltrados.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400">
             <PackageSearch size={48} className="text-gray-300" />
             <p className="text-sm font-medium">
@@ -451,50 +471,52 @@ export default function Inventario() {
         )}
 
         {/* Tabla de productos */}
-        {!isLoading && !error && productos.length > 0 && (
+        {!isLoading && !error && productosFiltrados.length > 0 && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
+            <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-[900px] text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-6 py-3.5">
+                  <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-6 py-3.5 whitespace-nowrap">
                     Nombre
                   </th>
-                  <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                  <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5 whitespace-nowrap">
                     Código de Barras
                   </th>
-                  <th className="text-right text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                  <th className="text-right text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5 whitespace-nowrap">
                     Precio
                   </th>
-                  <th className="text-right text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                  <th className="text-right text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5 whitespace-nowrap">
                     Costo
                   </th>
-                  <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                  <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5 whitespace-nowrap">
                     Marca
                   </th>
-                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5 whitespace-nowrap">
                     Stock
                   </th>
-                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5">
+                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3.5 whitespace-nowrap">
                     En Caja
                   </th>
-                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-6 py-3.5">
+                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wider px-6 py-3.5 whitespace-nowrap">
                     Acciones
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {productos.map((producto) => {
+                {productosFiltrados.map((producto) => {
                   const activo = producto.activo ?? true;
                   return (
                     <tr
                       key={producto.id}
-                      className={`hover:bg-gray-50 transition-colors group ${
+                      onClick={() => setProductoViendo(producto)}
+                      className={`hover:bg-gray-50 transition-colors group cursor-pointer ${
                         !activo ? 'opacity-50 bg-gray-50' : ''
                       }`}
                     >
 
                       {/* Nombre */}
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-3">
                           <div className="p-1.5 bg-indigo-50 rounded-lg shrink-0">
                             <Package size={14} className="text-indigo-500" />
@@ -504,7 +526,7 @@ export default function Inventario() {
                       </td>
 
                       {/* Código de barras */}
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-4 whitespace-nowrap">
                         {producto.codigo_barras ? (
                           <span className="inline-flex items-center gap-1.5 text-xs font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
                             <Barcode size={11} className="text-gray-400" />
@@ -516,14 +538,14 @@ export default function Inventario() {
                       </td>
 
                       {/* Precio */}
-                      <td className="px-4 py-4 text-right">
+                      <td className="px-4 py-4 text-right whitespace-nowrap">
                         <span className="font-bold text-gray-800">
                           {formatPrecio(producto.precio_actual)}
                         </span>
                       </td>
 
                       {/* Costo */}
-                      <td className="px-4 py-4 text-right">
+                      <td className="px-4 py-4 text-right whitespace-nowrap">
                         {producto.costo != null ? (
                           <span className="text-sm text-gray-500">
                             {formatPrecio(producto.costo)}
@@ -534,7 +556,7 @@ export default function Inventario() {
                       </td>
 
                       {/* Marca */}
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-4 whitespace-nowrap">
                         {producto.marca ? (
                           <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-md">
                             {producto.marca}
@@ -545,8 +567,8 @@ export default function Inventario() {
                       </td>
 
                       {/* Stock */}
-                      <td className="px-4 py-4">
-                        <div className="flex flex-wrap items-center justify-center gap-1.5">
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="flex flex-nowrap items-center justify-center gap-1.5">
                           {/* L1 — este local */}
                           <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
                             producto.stock_local > 0
@@ -567,7 +589,7 @@ export default function Inventario() {
                       </td>
 
                       {/* En caja (toggle activo) */}
-                      <td className="px-4 py-4 text-center">
+                      <td className="px-4 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => handleToggleActivo(producto)}
                           title={activo ? 'Pausar (ocultar del POS)' : 'Activar (mostrar en el POS)'}
@@ -585,7 +607,7 @@ export default function Inventario() {
                       </td>
 
                       {/* Acciones */}
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-6 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => abrirModalEditar(producto)}
@@ -608,6 +630,7 @@ export default function Inventario() {
                 })}
               </tbody>
             </table>
+            </div>
 
             {/* Pie de tabla — paginación */}
             <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between gap-4 flex-wrap">
@@ -621,10 +644,10 @@ export default function Inventario() {
                     <span className="font-semibold text-gray-600">{meta.total}</span> productos)
                   </p>
                 )}
-                {productos.some((p) => p.stock_local < STOCK_BAJO) && (
+                {productosFiltrados.some((p) => p.stock_local <= (p.stock_minimo ?? 5)) && (
                   <div className="flex items-center gap-1.5 text-xs text-red-400 font-medium">
                     <AlertTriangle size={12} />
-                    Hay productos con stock bajo ({STOCK_BAJO} unidades o menos)
+                    Hay productos con stock bajo (según mínimo configurado)
                   </div>
                 )}
               </div>
@@ -790,6 +813,26 @@ export default function Inventario() {
                 </div>
               </div>
 
+              {/* Stock Mínimo para Alerta */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Stock Mínimo para Alerta
+                </label>
+                <div className="relative">
+                  <AlertTriangle size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={form.stock_minimo}
+                    onChange={(e) => handleCampo('stock_minimo', e.target.value)}
+                    placeholder="5"
+                    className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                  />
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">Se mostrará alerta cuando el stock sea igual o menor a este valor</p>
+              </div>
+
               {/* Costo */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
@@ -878,6 +921,95 @@ export default function Inventario() {
                 ) : (
                   modoModal === 'crear' ? 'Crear Producto' : 'Guardar Cambios'
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          MODAL — Detalle del Producto (Solo lectura)
+      ══════════════════════════════════════════════════════════════════════ */}
+      {productoViendo && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setProductoViendo(null); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-50 rounded-xl">
+                  <Package size={16} className="text-indigo-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-800">Detalle del Producto</h2>
+                  <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]">
+                    {productoViendo.nombre}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setProductoViendo(null)}
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5">
+              {[
+                { label: 'Nombre', value: productoViendo.nombre },
+                { label: 'Código de Barras', value: productoViendo.codigo_barras },
+                { label: 'Precio de Venta', value: formatPrecio(productoViendo.precio_actual) },
+                { label: 'Costo', value: productoViendo.costo != null ? formatPrecio(productoViendo.costo) : undefined },
+                { label: 'Marca', value: productoViendo.marca },
+                { label: 'Categoría', value: productoViendo.categoria },
+                { label: 'Proveedor', value: productoViendo.proveedor },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{label}</span>
+                  <span className="text-sm font-medium text-gray-800">{value || '—'}</span>
+                </div>
+              ))}
+
+              {/* Alerta de stock */}
+              <div className="flex items-center justify-between py-2.5 border-b border-gray-50">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Alerta stock bajo en</span>
+                <span className="text-sm font-medium text-gray-800">{productoViendo.stock_minimo ?? 5} unidades</span>
+              </div>
+
+              {/* Stock badges */}
+              <div className="flex items-center justify-between pt-4">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Stock</span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
+                    productoViendo.stock_local > 0
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-red-50 text-red-500 border-red-200'
+                  }`}>
+                    🏠 L1: {productoViendo.stock_local}
+                  </span>
+                  <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
+                    (productoViendo.stock_otro ?? 0) > 0
+                      ? 'bg-sky-50 text-sky-700 border-sky-200'
+                      : 'bg-red-50 text-red-500 border-red-200'
+                  }`}>
+                    🏪 L2: {productoViendo.stock_otro ?? 0}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <button
+                onClick={() => setProductoViendo(null)}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
+              >
+                Cerrar
               </button>
             </div>
           </div>

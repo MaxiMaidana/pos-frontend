@@ -21,6 +21,7 @@ import {
   Package,
   Barcode,
   Store,
+  Search,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -113,8 +114,13 @@ interface ProductoStock {
   id: string;
   nombre: string;
   codigo_barras?: string;
-  stock: number;
+  stock_local: number;
+  stock_otro?: number | null;
+  stock_minimo?: number;
   precio_actual?: number;
+  marca?: string;
+  proveedor?: string;
+  stocks?: { tienda_id: string; cantidad: number }[];
 }
 
 interface Tienda {
@@ -205,6 +211,8 @@ export default function Dashboard() {
   const [loadingDetalle, setLoadingDetalle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [totalInteresesCredito, setTotalInteresesCredito] = useState(0);
+  const [busquedaStock, setBusquedaStock] = useState('');
+  const [totalStockBajo, setTotalStockBajo] = useState(0);
 
   // ── Carga de sucursales ───────────────────────────────────────────────
   useEffect(() => {
@@ -361,10 +369,14 @@ export default function Dashboard() {
     try {
       if (tipo === 'stock') {
         setModalTipo('stock');
-        const { data } = await api.get<ProductoStock[]>(`/productos`, {
-          params: { stockBajo: true },
+        setBusquedaStock('');
+        const { data } = await api.get(`/productos`, {
+          params: { stockBajo: true, ...(tiendaSeleccionada && { tienda_id: tiendaSeleccionada }) },
         });
-        setProductosStock(Array.isArray(data) ? data : (data as { data?: ProductoStock[] }).data ?? []);
+        const productos: ProductoStock[] = Array.isArray(data) ? data : (data as { data?: ProductoStock[] }).data ?? [];
+        const total = (data as { meta?: { total?: number } })?.meta?.total ?? productos.length;
+        setProductosStock(productos);
+        setTotalStockBajo(total);
       } else {
         setModalTipo('venta');
         const params =
@@ -1143,47 +1155,117 @@ export default function Dashboard() {
               )}
 
               {/* Lista de productos con stock bajo */}
-              {!loadingDetalle && modalTipo === 'stock' && productosStock.length > 0 && (
-                <div className="space-y-2">
-                  {productosStock.map((producto) => (
-                    <div
-                      key={producto.id}
-                      className="bg-gray-50 rounded-xl border border-gray-100 p-4 flex items-center justify-between gap-4"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-gray-800 text-sm truncate">{producto.nombre}</p>
-                        {producto.codigo_barras ? (
-                          <p className="text-xs font-mono text-gray-400 mt-0.5 flex items-center gap-1">
-                            <Barcode size={11} />
-                            {producto.codigo_barras}
-                          </p>
-                        ) : (
-                          <p className="text-xs text-gray-300 mt-0.5">Sin código de barras</p>
-                        )}
-                      </div>
-                      <span className={`text-sm font-black px-3 py-1.5 rounded-full shrink-0 ${
-                        producto.stock <= 0
-                          ? 'bg-red-100 text-red-600'
-                          : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        Stock: {producto.stock}
-                      </span>
+              {!loadingDetalle && modalTipo === 'stock' && productosStock.length > 0 && (() => {
+                const term = busquedaStock.toLowerCase();
+                const filtrados = productosStock
+                  .filter((p) =>
+                    !term ||
+                    p.nombre.toLowerCase().includes(term) ||
+                    p.codigo_barras?.toLowerCase().includes(term) ||
+                    p.marca?.toLowerCase().includes(term) ||
+                    p.proveedor?.toLowerCase().includes(term)
+                  )
+                  .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+
+                return (
+                  <div className="space-y-3">
+                    {/* Buscador */}
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={busquedaStock}
+                        onChange={(e) => setBusquedaStock(e.target.value)}
+                        placeholder="Buscar por nombre, código, marca o proveedor…"
+                        className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-transparent transition"
+                      />
                     </div>
-                  ))}
-                </div>
-              )}
+
+                    {filtrados.length === 0 ? (
+                      <p className="text-sm text-gray-400 text-center py-8">Sin resultados para "{busquedaStock}"</p>
+                    ) : (
+                      filtrados.map((producto) => (
+                        <div
+                          key={producto.id}
+                          className="bg-gray-50 rounded-xl border border-gray-100 p-4 flex items-center justify-between gap-4"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-gray-800 text-sm truncate">{producto.nombre}</p>
+                            {producto.codigo_barras ? (
+                              <p className="text-xs font-mono text-gray-400 mt-0.5 flex items-center gap-1">
+                                <Barcode size={11} />
+                                {producto.codigo_barras}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-gray-300 mt-0.5">Sin código de barras</p>
+                            )}
+                            {(producto.marca || producto.proveedor) && (
+                              <p className="text-[11px] text-gray-400 mt-1">
+                                {producto.marca && <span>Marca: <span className="font-medium text-gray-500">{producto.marca}</span></span>}
+                                {producto.marca && producto.proveedor && <span className="mx-1">|</span>}
+                                {producto.proveedor && <span>Prov: <span className="font-medium text-gray-500">{producto.proveedor}</span></span>}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                            {tiendas.length > 0 ? tiendas.map((tienda) => {
+                              const stockEntry = (producto.stocks ?? []).find((s) => s.tienda_id === tienda.id);
+                              const cantidad = stockEntry?.cantidad ?? 0;
+                              const nombre = tienda.nombre ?? tienda.nombre_tienda ?? tienda.id;
+                              return (
+                                <span
+                                  key={tienda.id}
+                                  className={`text-xs font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${
+                                    cantidad > (producto.stock_minimo ?? 5)
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : cantidad > 0
+                                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                      : 'bg-red-50 text-red-600 border-red-200'
+                                  }`}
+                                >
+                                  {nombre}: {cantidad}
+                                </span>
+                              );
+                            }) : (
+                              <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
+                                producto.stock_local > 0
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-red-50 text-red-600 border-red-200'
+                              }`}>
+                                Local: {producto.stock_local}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Footer */}
             {!loadingDetalle && modalTipo !== 'recaudacion' && (modalTipo === 'stock' ? productosStock.length > 0 : ventasDetalle.length > 0) && (
               <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 rounded-b-2xl shrink-0">
                 <p className="text-xs text-gray-400">
-                  {modalTipo === 'stock' ? (
-                    <>
-                      <span className="font-bold text-gray-600">{productosStock.length}</span>{' '}
-                      producto{productosStock.length !== 1 ? 's' : ''} con stock bajo
-                    </>
-                  ) : (
+                  {modalTipo === 'stock' ? (() => {
+                    const term = busquedaStock.toLowerCase();
+                    const count = productosStock.filter((p) =>
+                      !term ||
+                      p.nombre.toLowerCase().includes(term) ||
+                      p.codigo_barras?.toLowerCase().includes(term) ||
+                      p.marca?.toLowerCase().includes(term) ||
+                      p.proveedor?.toLowerCase().includes(term)
+                    ).length;
+                    return (
+                      <>
+                        Mostrando <span className="font-bold text-gray-600">{busquedaStock ? count : productosStock.length}</span> de{' '}
+                        <span className="font-bold text-gray-600">{totalStockBajo.toLocaleString('es-AR')}</span>{' '}
+                        producto{totalStockBajo !== 1 ? 's' : ''} con stock bajo
+                        {busquedaStock && ` (filtro local)`}
+                      </>
+                    );
+                  })() : (
                     <>
                       <span className="font-bold text-gray-600">{ventasDetalle.length}</span>{' '}
                       venta{ventasDetalle.length !== 1 ? 's' : ''} encontrada{ventasDetalle.length !== 1 ? 's' : ''}
