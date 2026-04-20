@@ -32,7 +32,9 @@ interface Producto {
   nombre: string;
   codigo_barras?: string;
   precio_actual: number;
+  precio_sin_redondear?: number;
   costo?: number;
+  margen?: number;
   marca?: string;
   categoria?: string;
   proveedor?: string;
@@ -47,6 +49,7 @@ interface FormProducto {
   codigo_barras: string;
   precio_actual: string;
   costo: string;
+  margen: string;
   marca: string;
   categoria: string;
   proveedor: string;
@@ -72,6 +75,7 @@ const FORM_VACIO: FormProducto = {
   codigo_barras: '',
   precio_actual: '',
   costo: '',
+  margen: '',
   marca: '',
   categoria: '',
   proveedor: '',
@@ -91,6 +95,7 @@ export default function Inventario() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState('');
+  const [stockExacto, setStockExacto] = useState('');
 
   // Paginación
   const [page, setPage] = useState(1);
@@ -98,6 +103,7 @@ export default function Inventario() {
 
   // Búsqueda con debounce
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [debouncedStockExacto, setDebouncedStockExacto] = useState('');
 
   // Modal
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -125,7 +131,16 @@ export default function Inventario() {
       setError(null);
       const { data } = await api.get<{ data: Producto[]; meta: MetaPaginacion }>(
         `/productos`,
-        { params: { page, limit: LIMIT, ...(debouncedSearch && { search: debouncedSearch }) } }
+        {
+          params: {
+            page,
+            limit: LIMIT,
+            ...(debouncedSearch && { search: debouncedSearch }),
+            ...(debouncedStockExacto !== '' && !isNaN(Number(debouncedStockExacto)) && {
+              stockExacto: parseInt(debouncedStockExacto),
+            }),
+          },
+        }
       );
       setProductos(data.data);
       setMeta(data.meta);
@@ -134,7 +149,7 @@ export default function Inventario() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, debouncedSearch]);
+  }, [page, debouncedSearch, debouncedStockExacto]);
 
   useEffect(() => {
     fetchProductos();
@@ -149,18 +164,53 @@ export default function Inventario() {
     return () => clearTimeout(timer);
   }, [busqueda]);
 
+  // Debounce: al cambiar stockExacto, esperar 400ms y resetear a página 1
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1);
+      setDebouncedStockExacto(stockExacto);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [stockExacto]);
+
   // ── Filtro ampliado (client-side): marca, categoría, proveedor ──────────
   const productosFiltrados = useMemo(() => {
-    if (!debouncedSearch) return productos;
-    const term = debouncedSearch.toLowerCase();
-    return productos.filter((p) =>
-      p.nombre.toLowerCase().includes(term) ||
-      p.codigo_barras?.toLowerCase().includes(term) ||
-      p.marca?.toLowerCase().includes(term) ||
-      p.categoria?.toLowerCase().includes(term) ||
-      p.proveedor?.toLowerCase().includes(term)
-    );
-  }, [productos, debouncedSearch]);
+    let result = productos;
+    if (debouncedSearch) {
+      const term = debouncedSearch.toLowerCase();
+      result = result.filter((p) =>
+        p.nombre.toLowerCase().includes(term) ||
+        p.codigo_barras?.toLowerCase().includes(term) ||
+        p.marca?.toLowerCase().includes(term) ||
+        p.categoria?.toLowerCase().includes(term) ||
+        p.proveedor?.toLowerCase().includes(term)
+      );
+    }
+    if (debouncedStockExacto !== '' && !isNaN(Number(debouncedStockExacto))) {
+      const exacto = parseInt(debouncedStockExacto);
+      result = result.filter((p) => p.stock_local === exacto);
+    }
+    return result;
+  }, [productos, debouncedSearch, debouncedStockExacto]);
+
+  // Calculadora: actualiza precio_actual cuando cambian costo y margen
+  useEffect(() => {
+    const costo = parseFloat(form.costo);
+    const margen = parseFloat(form.margen);
+    if (!isNaN(costo) && !isNaN(margen) && costo > 0 && margen > 0) {
+      setForm((prev) => ({ ...prev, precio_actual: String(Math.ceil(costo * margen)) }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.costo, form.margen]);
+
+  const precioSinRedondear = useMemo(() => {
+    const costo = parseFloat(form.costo);
+    const margen = parseFloat(form.margen);
+    if (!isNaN(costo) && !isNaN(margen) && costo > 0 && margen > 0) {
+      return costo * margen;
+    }
+    return null;
+  }, [form.costo, form.margen]);
 
   // ── Acciones modal ───────────────────────────────────────────────────────
   const abrirModalCrear = () => {
@@ -179,6 +229,7 @@ export default function Inventario() {
       codigo_barras: producto.codigo_barras ?? '',
       precio_actual: String(producto.precio_actual),
       costo: producto.costo != null ? String(producto.costo) : '',
+      margen: producto.margen != null ? String(producto.margen) : '',
       marca: producto.marca ?? '',
       categoria: producto.categoria ?? '',
       proveedor: producto.proveedor ?? '',
@@ -205,16 +256,33 @@ export default function Inventario() {
       setErrorForm('El nombre del producto es obligatorio.');
       return;
     }
-    if (!form.precio_actual || isNaN(parseFloat(form.precio_actual))) {
-      setErrorForm('El precio debe ser un número válido.');
+    if (!form.costo || isNaN(parseFloat(form.costo)) || parseFloat(form.costo) <= 0) {
+      setErrorForm('El costo del producto es obligatorio.');
       return;
     }
+    if (!form.margen || isNaN(parseFloat(form.margen)) || parseFloat(form.margen) <= 0) {
+      setErrorForm('El margen de ganancia es obligatorio y debe ser un número mayor a 0.');
+      return;
+    }
+    if (!form.precio_actual || isNaN(parseFloat(form.precio_actual))) {
+      setErrorForm('Ingresá el costo y el margen para calcular el precio.');
+      return;
+    }
+
+    const costoNum = form.costo ? parseFloat(form.costo) : undefined;
+    const margenNum = form.margen ? parseFloat(form.margen) : undefined;
+    const sinRedondear =
+      costoNum !== undefined && margenNum !== undefined && costoNum > 0 && margenNum > 0
+        ? costoNum * margenNum
+        : undefined;
 
     const payload = {
       nombre: form.nombre.trim(),
       codigo_barras: form.codigo_barras.trim() || undefined,
       precio_actual: parseFloat(form.precio_actual),
-      costo: form.costo ? parseFloat(form.costo) : undefined,
+      precio_sin_redondear: sinRedondear,
+      costo: costoNum,
+      margen: margenNum,
       marca: form.marca.trim() || undefined,
       categoria: form.categoria.trim() || undefined,
       proveedor: form.proveedor.trim() || undefined,
@@ -367,7 +435,7 @@ export default function Inventario() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3 flex-1 max-w-md ml-auto">
+          <div className="flex items-center gap-3 flex-1 max-w-2xl ml-auto">
             {/* Búsqueda */}
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -378,6 +446,30 @@ export default function Inventario() {
                 placeholder="Buscar por nombre o código..."
                 className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
               />
+            </div>
+
+            {/* Filtro Stock Exacto */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <label className="text-xs text-gray-500 font-semibold whitespace-nowrap">Stock =</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={stockExacto}
+                onChange={(e) => setStockExacto(e.target.value)}
+                placeholder="—"
+                title="Filtrar por stock exacto (ej: 0 para sin stock)"
+                className="w-16 px-2 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              {stockExacto !== '' && (
+                <button
+                  onClick={() => setStockExacto('')}
+                  className="p-1 rounded text-gray-400 hover:text-gray-600 transition-colors"
+                  title="Limpiar filtro de stock"
+                >
+                  <X size={13} />
+                </button>
+              )}
             </div>
 
             <button
@@ -688,7 +780,7 @@ export default function Inventario() {
           className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
           onClick={(e) => { if (e.target === e.currentTarget) cerrarModal(); }}
         >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
 
             {/* Header del modal */}
             <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
@@ -720,7 +812,7 @@ export default function Inventario() {
             </div>
 
             {/* Cuerpo del modal */}
-            <div className="px-6 py-5 space-y-4">
+            <div className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
 
               {/* Error de formulario */}
               {errorForm && (
@@ -776,7 +868,7 @@ export default function Inventario() {
                 {/* Precio */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                    Precio <span className="text-red-400">*</span>
+                    Precio
                   </label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none font-bold">$</span>
@@ -796,7 +888,7 @@ export default function Inventario() {
                 {/* Stock */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                    Stock <span className="text-red-400">*</span>
+                    Stock
                   </label>
                   <div className="relative">
                     <Hash size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -836,7 +928,7 @@ export default function Inventario() {
               {/* Costo */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                  Costo <span className="text-gray-300 font-normal normal-case">(opcional)</span>
+                  Costo <span className="text-red-400">*</span>
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none font-bold">$</span>
@@ -850,6 +942,46 @@ export default function Inventario() {
                     className="w-full pl-7 pr-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
                   />
                 </div>
+              </div>
+
+              {/* Calculadora de Precio */}
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-3">
+                <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider">Calculadora de Precio</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Margen */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Margen de Ganancia <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      value={form.margen}
+                      onChange={(e) => handleCampo('margen', e.target.value)}
+                      placeholder="Ej: 2.2"
+                      className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                    />
+                  </div>
+
+                  {/* Precio sin redondear */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Precio Sin Redondear
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none font-bold">$</span>
+                      <input
+                        type="text"
+                        readOnly
+                        value={precioSinRedondear !== null ? precioSinRedondear.toFixed(2) : ''}
+                        placeholder="—"
+                        className="w-full pl-7 pr-3 py-2.5 rounded-lg border border-gray-100 bg-gray-100 text-sm text-gray-500 placeholder-gray-300 cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+                </div>
+
               </div>
 
               {/* Marca y Categoría */}
@@ -906,7 +1038,7 @@ export default function Inventario() {
               </button>
               <button
                 onClick={handleGuardar}
-                disabled={isGuardando || !form.nombre.trim() || !(parseFloat(form.precio_actual) > 0)}
+                disabled={isGuardando || !form.nombre.trim() || !(parseFloat(form.margen) > 0)}
                 className={`
                   flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200
                   disabled:opacity-50 disabled:cursor-not-allowed
@@ -965,6 +1097,8 @@ export default function Inventario() {
                 { label: 'Código de Barras', value: productoViendo.codigo_barras },
                 { label: 'Precio de Venta', value: formatPrecio(productoViendo.precio_actual) },
                 { label: 'Costo', value: productoViendo.costo != null ? formatPrecio(productoViendo.costo) : undefined },
+                { label: 'Margen de Ganancia', value: productoViendo.margen != null ? String(productoViendo.margen) + 'x' : undefined },
+                { label: 'Precio Sin Redondear', value: productoViendo.precio_sin_redondear != null ? formatPrecio(productoViendo.precio_sin_redondear) : undefined },
                 { label: 'Marca', value: productoViendo.marca },
                 { label: 'Categoría', value: productoViendo.categoria },
                 { label: 'Proveedor', value: productoViendo.proveedor },

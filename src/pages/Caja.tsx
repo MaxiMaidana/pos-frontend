@@ -139,8 +139,10 @@ export default function Caja() {
     try {
       setIsLoading(true);
       setErrorLista(null);
-      const { data } = await api.get<Venta[]>(`/ventas`);
-      setVentas(data.filter((v) => v.estado === 'PENDIENTE'));
+      const { data } = await api.get<{ data: Venta[] }>(`/ventas`, {
+        params: { estado: 'PENDIENTE', limit: 200 },
+      });
+      setVentas((data.data ?? []).filter((v) => v.estado === 'PENDIENTE'));
     } catch {
       setErrorLista('No se pudieron cargar las comandas. Verificá que el servidor esté corriendo.');
     } finally {
