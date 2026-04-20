@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import api from '../api/axiosClient';
 import SyncButton from '../components/SyncButton';
@@ -46,6 +46,21 @@ interface MetaPaginacion {
   totalPages: number;
 }
 
+interface BorradorDetalle {
+  producto_id: string;
+  nombre: string;
+  precio_unitario_historico: number;
+  cantidad: number;
+  stock_local?: number;
+}
+
+interface BorradorVenta {
+  id: string;
+  vendedor_nombre: string;
+  estado: 'BORRADOR';
+  detalles: BorradorDetalle[];
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const LIMIT = 15;
@@ -81,6 +96,98 @@ export default function NuevaVenta() {
   const [modalAltaOpen, setModalAltaOpen] = useState(false);
   const [formAlta, setFormAlta] = useState({ nombre: '', precio_actual: '', codigo_barras: '', costo: '' });
   const [isCreando, setIsCreando] = useState(false);
+
+  // Borradores (carritos persistidos en DB)
+  const [borradores, setBorradores] = useState<BorradorVenta[]>([]);
+  const [borradorActualId, setBorradorActualId] = useState<string | null>(null);
+  const borradorIdRef = useRef<string | null>(null);
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isSincronizando, setIsSincronizando] = useState(false);
+
+  // Modal comanda
+  const [modalComandaOpen, setModalComandaOpen] = useState(false);
+  const [clienteNombre, setClienteNombre] = useState('');
+
+  // ── Fetch borradores ─────────────────────────────────────────────────────
+  const fetchBorradores = useCallback(async () => {
+    try {
+      const { data } = await api.get<{ data: BorradorVenta[] }>('/ventas', {
+        params: { estado: 'BORRADOR', limit: 50 },
+      });
+      setBorradores(data.data ?? []);
+    } catch {
+      // silent — no bloquea la UI
+    }
+  }, []);
+
+  useEffect(() => { fetchBorradores(); }, [fetchBorradores]);
+
+  // Mantener la ref sincronizada con el estado para su uso en efectos
+  useEffect(() => { borradorIdRef.current = borradorActualId; }, [borradorActualId]);
+
+  // ── Cargar borrador en el carrito ─────────────────────────────────────────
+  const cargarBorrador = (venta: BorradorVenta) => {
+    setBorradorActualId(venta.id);
+    borradorIdRef.current = venta.id;
+    setCarrito(
+      venta.detalles.map((d) => ({
+        producto_id: d.producto_id,
+        nombre: d.nombre,
+        precio_unitario_historico: d.precio_unitario_historico,
+        cantidad: d.cantidad,
+        stock_local: d.stock_local ?? 999,
+      }))
+    );
+  };
+
+  // ── Sincronizar carrito ↔ backend (debounced) ─────────────────────────────
+  useEffect(() => {
+    if (!vendedorNombre) return;
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+
+    // Carrito vacío + borrador existente → eliminar borrador
+    if (carrito.length === 0 && borradorIdRef.current) {
+      const idAEliminar = borradorIdRef.current;
+      setBorradorActualId(null);
+      borradorIdRef.current = null;
+      api.delete(`/ventas/${idAEliminar}`).catch(() => {});
+      fetchBorradores();
+      return;
+    }
+
+    if (carrito.length === 0) return;
+
+    syncTimerRef.current = setTimeout(async () => {
+      const detallesPayload = carrito.map((i) => ({
+        producto_id: i.producto_id,
+        cantidad: i.cantidad,
+        precio_unitario_historico: i.precio_unitario_historico,
+      }));
+      try {
+        setIsSincronizando(true);
+        if (!borradorIdRef.current) {
+          const { data } = await api.post<BorradorVenta>('/ventas', {
+            vendedor_nombre: vendedorNombre,
+            estado: 'BORRADOR',
+            descuento_total: 0,
+            detalles: detallesPayload,
+          });
+          setBorradorActualId(data.id);
+          borradorIdRef.current = data.id;
+        } else {
+          await api.put(`/ventas/${borradorIdRef.current}`, { detalles: detallesPayload });
+        }
+        fetchBorradores();
+      } catch {
+        // silent — el carrito local sigue funcionando
+      } finally {
+        setIsSincronizando(false);
+      }
+    }, 800);
+
+    return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carrito, vendedorNombre]);
 
   // ── Fetch productos ──────────────────────────────────────────────────────
   const fetchProductos = useCallback(async () => {
@@ -142,6 +249,16 @@ export default function NuevaVenta() {
     localStorage.removeItem('pos_vendedor');
     setVendedorNombre('');
     setCarrito([]);
+    setBorradorActualId(null);
+    borradorIdRef.current = null;
+  };
+
+  // Crear un carrito nuevo limpio (sin tocar los borradores existentes)
+  const handleNuevoCarrito = () => {
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    setCarrito([]);
+    setBorradorActualId(null);
+    borradorIdRef.current = null;
   };
 
   // ── Total ────────────────────────────────────────────────────────────────
@@ -258,7 +375,7 @@ export default function NuevaVenta() {
   };
 
   // ── Submit ───────────────────────────────────────────────────────────────
-  const handleGenerarComanda = async () => {
+  const handleAbrirModalComanda = () => {
     if (!vendedorNombre) {
       alert('Por favor, seleccioná un vendedor antes de continuar.');
       return;
@@ -267,25 +384,32 @@ export default function NuevaVenta() {
       alert('El carrito está vacío. Agregá al menos un producto.');
       return;
     }
+    setClienteNombre('');
+    setModalComandaOpen(true);
+  };
 
-    const payload = {
-      vendedor_nombre: vendedorNombre,
-      descuento_total: 0,
-      detalles: carrito.map((item) => ({
-        producto_id: item.producto_id,
-        cantidad: item.cantidad,
-        precio_unitario_historico: item.precio_unitario_historico,
-      })),
-    };
-
+  const handleConfirmarComanda = async () => {
+    if (!borradorIdRef.current) {
+      // Fallback: si el sync aún no creó el borrador, esperar un momento
+      toast.error('El carrito aún se está guardando. Intentá en un segundo.');
+      return;
+    }
     try {
       setIsSubmitting(true);
-      await api.post(`/ventas`, payload);
-      alert('✅ Comanda enviada a la caja');
+      await api.put(`/ventas/${borradorIdRef.current}`, {
+        estado: 'PENDIENTE',
+        cliente_nombre: clienteNombre.trim() || undefined,
+      });
+      toast.success('✅ Comanda enviada a la caja');
       setCarrito([]);
+      setBorradorActualId(null);
+      borradorIdRef.current = null;
+      setModalComandaOpen(false);
+      setClienteNombre('');
+      await fetchBorradores();
       await fetchProductos();
     } catch {
-      alert('❌ Error al enviar la comanda. Intentá de nuevo.');
+      toast.error('❌ Error al enviar la comanda. Intentá de nuevo.');
     } finally {
       setIsSubmitting(false);
     }
@@ -369,6 +493,57 @@ export default function NuevaVenta() {
               <Zap size={14} />
               <span className="hidden sm:inline">Crear Rápido</span>
             </button>
+          </div>
+
+          {/* Barra de pestañas de carritos (borradores) */}
+          <div className="mt-3 -mx-1 flex items-stretch border-b border-gray-200 overflow-x-auto">
+            {borradores.map((b) => {
+              const esActivo = borradorActualId === b.id;
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => cargarBorrador(b)}
+                  className={`
+                    inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold whitespace-nowrap
+                    border-b-2 transition-all shrink-0
+                    ${
+                      esActivo
+                        ? 'border-indigo-500 text-indigo-700 bg-indigo-50'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 bg-transparent'
+                    }
+                  `}
+                >
+                  <User size={11} className={esActivo ? 'text-indigo-500' : 'text-gray-400'} />
+                  {b.vendedor_nombre}
+                  <span className={`text-[10px] font-semibold ${ esActivo ? 'text-indigo-400' : 'text-gray-400' }`}>
+                    ({b.detalles.length})
+                  </span>
+                </button>
+              );
+            })}
+            {/* Pestaña “+” para nuevo carrito */}
+            <button
+              onClick={handleNuevoCarrito}
+              title="Nuevo carrito"
+              className={`
+                inline-flex items-center px-3 py-2 text-xs font-bold
+                border-b-2 transition-all shrink-0
+                ${
+                  borradorActualId === null && carrito.length === 0
+                    ? 'border-emerald-500 text-emerald-600 bg-emerald-50'
+                    : 'border-transparent text-gray-400 hover:text-gray-600 hover:border-gray-300'
+                }
+              `}
+            >
+              <Plus size={14} />
+            </button>
+            {/* Indicador de guardado */}
+            {isSincronizando && (
+              <span className="ml-auto self-center pr-2 text-[10px] text-gray-400 flex items-center gap-1 shrink-0">
+                <Loader2 size={10} className="animate-spin" />
+                Guardando...
+              </span>
+            )}
           </div>
 
           {/* Banner de aviso cuando el modo está activo */}
@@ -701,7 +876,7 @@ export default function NuevaVenta() {
 
           {/* Botón generar comanda */}
           <button
-            onClick={handleGenerarComanda}
+            onClick={handleAbrirModalComanda}
             disabled={isSubmitting || carrito.length === 0 || !vendedorNombre}
             className={`
               w-full py-4 rounded-xl text-base font-bold flex items-center justify-center gap-2.5 transition-all duration-200
@@ -852,6 +1027,73 @@ export default function NuevaVenta() {
                 {isCreando
                   ? <><Loader2 size={15} className="animate-spin" /> Creando...</>
                   : <><Zap size={15} /> Guardar y agregar</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ══ Modal: Nombre de Cliente ═══════════════════════════════════════════════ */}
+      {modalComandaOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setModalComandaOpen(false); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-50 rounded-xl">
+                  <User size={16} className="text-emerald-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-800">Generar Comanda</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">{carrito.length} productos · {formatPrecio(total)}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setModalComandaOpen(false)}
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                Nombre del Cliente <span className="font-normal text-gray-400 normal-case">(opcional)</span>
+              </label>
+              <input
+                type="text"
+                value={clienteNombre}
+                onChange={(e) => setClienteNombre(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleConfirmarComanda()}
+                placeholder="Ej: Juan García"
+                autoFocus
+                autoComplete="off"
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+              />
+              <p className="text-xs text-gray-400 mt-2">
+                Se mostrará en la caja para identificar el pedido.
+              </p>
+            </div>
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <button
+                onClick={() => setModalComandaOpen(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmarComanda}
+                disabled={isSubmitting}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+                  isSubmitting
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white shadow-sm shadow-emerald-100'
+                }`}
+              >
+                {isSubmitting
+                  ? <><Loader2 size={15} className="animate-spin" /> Enviando...</>
+                  : <><CheckCircle size={15} /> Confirmar Comanda</>
                 }
               </button>
             </div>
