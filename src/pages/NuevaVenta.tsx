@@ -406,8 +406,15 @@ export default function NuevaVenta() {
     try {
       setIsSubmitting(true);
       await api.put(`/ventas/${borradorIdRef.current}`, {
+        vendedor_nombre: vendedorNombre,
         estado: 'PENDIENTE',
+        descuento_total: 0,
         cliente_nombre: clienteNombre.trim() || undefined,
+        detalles: carrito.map((i) => ({
+          producto_id: i.producto_id,
+          cantidad: i.cantidad,
+          precio_unitario_historico: i.precio_unitario_historico,
+        })),
       });
       toast.success('✅ Comanda enviada a la caja');
       setCarrito([]);
