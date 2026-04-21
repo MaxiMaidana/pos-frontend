@@ -18,6 +18,7 @@ import {
   ChevronUp,
   X,
   Zap,
+  RefreshCw,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -64,6 +65,7 @@ interface BorradorVenta {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const LIMIT = 15;
+const POLL_INTERVAL_MS = 5_000; // Auto-refresh de borradores para sincronización entre pestañas
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -101,7 +103,8 @@ export default function NuevaVenta() {
   const [borradores, setBorradores] = useState<BorradorVenta[]>([]);
   const [borradorActualId, setBorradorActualId] = useState<string | null>(null);
   const borradorIdRef = useRef<string | null>(null);
-  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSincronizandoRef = useRef(false);
   const [isSincronizando, setIsSincronizando] = useState(false);
 
   // Modal comanda
@@ -114,13 +117,35 @@ export default function NuevaVenta() {
       const { data } = await api.get<{ data: BorradorVenta[] }>('/ventas', {
         params: { estado: 'BORRADOR', limit: 50 },
       });
-      setBorradores(data.data ?? []);
+      const fetched = data.data ?? [];
+      setBorradores(fetched);
+      // Sincronizar silenciosamente el carrito activo con la DB (cambios desde otra pestaña)
+      if (borradorIdRef.current && !isSincronizandoRef.current) {
+        const activo = fetched.find((b) => b.id === borradorIdRef.current);
+        if (activo) {
+          setCarrito(
+            activo.detalles.map((d) => ({
+              producto_id: d.producto_id,
+              nombre: d.nombre,
+              precio_unitario_historico: d.precio_unitario_historico,
+              cantidad: d.cantidad,
+              stock_local: d.stock_local ?? 999,
+            }))
+          );
+        }
+      }
     } catch {
       // silent — no bloquea la UI
     }
   }, []);
 
   useEffect(() => { fetchBorradores(); }, [fetchBorradores]);
+
+  // Auto-polling: vuelve a consultar borradores cada 5 s para sincronizar entre pestañas
+  useEffect(() => {
+    const id = setInterval(fetchBorradores, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [fetchBorradores]);
 
   // Mantener la ref sincronizada con el estado para su uso en efectos
   useEffect(() => { borradorIdRef.current = borradorActualId; }, [borradorActualId]);
@@ -140,13 +165,13 @@ export default function NuevaVenta() {
     );
   };
 
-  // ── Sincronizar carrito ↔ backend (debounced) ─────────────────────────────
-  useEffect(() => {
-    if (!vendedorNombre) return;
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+  // ── Sincronizar carrito ↔ backend (300 ms debounce para ráfagas de clicks) ──
+  const syncToBackend = useCallback((newCarrito: ItemCarrito[]) => {
+    if (!vendedorNombre && !borradorIdRef.current) return;
+    if (pendingSyncRef.current) clearTimeout(pendingSyncRef.current);
 
     // Carrito vacío + borrador existente → eliminar borrador
-    if (carrito.length === 0 && borradorIdRef.current) {
+    if (newCarrito.length === 0 && borradorIdRef.current) {
       const idAEliminar = borradorIdRef.current;
       setBorradorActualId(null);
       borradorIdRef.current = null;
@@ -155,16 +180,17 @@ export default function NuevaVenta() {
       return;
     }
 
-    if (carrito.length === 0) return;
+    if (!vendedorNombre || newCarrito.length === 0) return;
 
-    syncTimerRef.current = setTimeout(async () => {
-      const detallesPayload = carrito.map((i) => ({
+    pendingSyncRef.current = setTimeout(async () => {
+      const detallesPayload = newCarrito.map((i) => ({
         producto_id: i.producto_id,
         cantidad: i.cantidad,
         precio_unitario_historico: i.precio_unitario_historico,
       }));
+      setIsSincronizando(true);
+      isSincronizandoRef.current = true;
       try {
-        setIsSincronizando(true);
         if (!borradorIdRef.current) {
           const { data } = await api.post<BorradorVenta>('/ventas', {
             vendedor_nombre: vendedorNombre,
@@ -182,12 +208,10 @@ export default function NuevaVenta() {
         // silent — el carrito local sigue funcionando
       } finally {
         setIsSincronizando(false);
+        isSincronizandoRef.current = false;
       }
-    }, 800);
-
-    return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carrito, vendedorNombre]);
+    }, 300);
+  }, [vendedorNombre, fetchBorradores]);
 
   // ── Fetch productos ──────────────────────────────────────────────────────
   const fetchProductos = useCallback(async () => {
@@ -255,7 +279,7 @@ export default function NuevaVenta() {
 
   // Crear un carrito nuevo limpio (sin tocar los borradores existentes)
   const handleNuevoCarrito = () => {
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    if (pendingSyncRef.current) clearTimeout(pendingSyncRef.current);
     setCarrito([]);
     setBorradorActualId(null);
     borradorIdRef.current = null;
@@ -278,26 +302,11 @@ export default function NuevaVenta() {
       toast.error('Stock insuficiente');
       return;
     }
-    setCarrito((prev) => {
-      const item = prev.find((i) => i.producto_id === producto.id);
-      if (item) {
-        return prev.map((i) =>
-          i.producto_id === producto.id
-            ? { ...i, cantidad: i.cantidad + 1 }
-            : i
-        );
-      }
-      return [
-        ...prev,
-        {
-          producto_id: producto.id,
-          nombre: producto.nombre,
-          precio_unitario_historico: producto.precio_actual,
-          cantidad: 1,
-          stock_local: producto.stock_local,
-        },
-      ];
-    });
+    const newCarrito: ItemCarrito[] = existente
+      ? carrito.map((i) => i.producto_id === producto.id ? { ...i, cantidad: i.cantidad + 1 } : i)
+      : [...carrito, { producto_id: producto.id, nombre: producto.nombre, precio_unitario_historico: producto.precio_actual, cantidad: 1, stock_local: producto.stock_local }];
+    setCarrito(newCarrito);
+    syncToBackend(newCarrito);
   };
 
   const cambiarCantidad = (producto_id: string, delta: number) => {
@@ -308,17 +317,17 @@ export default function NuevaVenta() {
         return;
       }
     }
-    setCarrito((prev) =>
-      prev
-        .map((i) =>
-          i.producto_id === producto_id ? { ...i, cantidad: i.cantidad + delta } : i
-        )
-        .filter((i) => i.cantidad > 0)
-    );
+    const newCarrito = carrito
+      .map((i) => i.producto_id === producto_id ? { ...i, cantidad: i.cantidad + delta } : i)
+      .filter((i) => i.cantidad > 0);
+    setCarrito(newCarrito);
+    syncToBackend(newCarrito);
   };
 
   const eliminarItem = (producto_id: string) => {
-    setCarrito((prev) => prev.filter((i) => i.producto_id !== producto_id));
+    const newCarrito = carrito.filter((i) => i.producto_id !== producto_id);
+    setCarrito(newCarrito);
+    syncToBackend(newCarrito);
   };
 
   const cantidadEnCarrito = (producto_id: string) =>
@@ -537,13 +546,22 @@ export default function NuevaVenta() {
             >
               <Plus size={14} />
             </button>
-            {/* Indicador de guardado */}
-            {isSincronizando && (
-              <span className="ml-auto self-center pr-2 text-[10px] text-gray-400 flex items-center gap-1 shrink-0">
-                <Loader2 size={10} className="animate-spin" />
-                Guardando...
-              </span>
-            )}
+            {/* Acciones de tabs: botón Refrescar + indicador de guardado */}
+            <div className="ml-auto self-center flex items-center gap-1.5 pr-2 shrink-0">
+              {isSincronizando && (
+                <span className="text-[10px] text-gray-400 flex items-center gap-1">
+                  <Loader2 size={10} className="animate-spin" />
+                  Guardando...
+                </span>
+              )}
+              <button
+                onClick={fetchBorradores}
+                title="Refrescar pestañas"
+                className="p-1 rounded-md text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 transition-colors"
+              >
+                <RefreshCw size={11} />
+              </button>
+            </div>
           </div>
 
           {/* Banner de aviso cuando el modo está activo */}
