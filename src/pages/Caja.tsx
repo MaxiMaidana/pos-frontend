@@ -47,6 +47,8 @@ interface LineaPago {
 interface Venta {
   id: string;
   vendedor_nombre: string;
+  vendedor?: { id: string; nombre: string };
+  cliente_nombre?: string;
   estado: string;
   descuento_total: number;
   total: number;
@@ -700,9 +702,12 @@ export default function Caja() {
                       <div className="flex items-center gap-1.5">
                         <User size={12} className={isActive ? 'text-indigo-500' : 'text-gray-400'} />
                         <p className={`text-sm font-semibold truncate ${isActive ? 'text-indigo-700' : 'text-gray-700'}`}>
-                          {venta.vendedor_nombre}
+                          {venta.vendedor?.nombre || venta.vendedor_nombre}
                         </p>
                       </div>
+                      {venta.cliente_nombre && (
+                        <p className="text-xs text-gray-500 truncate mt-0.5">Cliente: {venta.cliente_nombre}</p>
+                      )}
                       {/* Ítems */}
                       <p className="text-xs text-gray-400 mt-1">
                         {venta.detalles?.length ?? 0} ítem{(venta.detalles?.length ?? 0) !== 1 ? 's' : ''}
@@ -770,8 +775,11 @@ export default function Caja() {
                       <div className="p-1.5 bg-indigo-100 rounded-full">
                         <User size={13} className="text-indigo-600" />
                       </div>
-                      <p className="text-lg font-bold text-gray-800">{seleccionada.vendedor_nombre}</p>
+                      <p className="text-lg font-bold text-gray-800">{seleccionada.vendedor?.nombre || seleccionada.vendedor_nombre}</p>
                     </div>
+                    {seleccionada.cliente_nombre && (
+                      <p className="text-sm text-gray-600 mt-1">Cliente: <span className="font-medium">{seleccionada.cliente_nombre}</span></p>
+                    )}
                   </div>
                   <span className="bg-amber-100 text-amber-700 text-xs font-bold px-3 py-1 rounded-full border border-amber-200 shrink-0">
                     PENDIENTE

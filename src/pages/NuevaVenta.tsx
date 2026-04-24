@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import api from '../api/axiosClient';
 import SyncButton from '../components/SyncButton';
@@ -13,9 +13,9 @@ import {
   User,
   Tag,
   CheckCircle,
-  LogOut,
   AlertTriangle,
   ChevronUp,
+  ChevronDown,
   X,
   Zap,
 } from 'lucide-react';
@@ -37,6 +37,19 @@ interface ItemCarrito {
   precio_unitario_historico: number;
   cantidad: number;
   stock_local: number;
+}
+
+interface Vendedor {
+  id: string;
+  nombre: string;
+}
+
+interface DetalleVenta {
+  producto_id: string;
+  cantidad: number;
+  precio_unitario_historico: number;
+  nombre?: string;
+  producto?: { nombre: string; stock_local?: number };
 }
 
 interface MetaPaginacion {
@@ -70,17 +83,46 @@ export default function NuevaVenta() {
     () => localStorage.getItem('pos_stock_negativo') === 'true'
   );
 
+  // Vendedores & Venta Borrador
+  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
+  const [selectedVendedorId, setSelectedVendedorId] = useState('');
+  const [ventaId, setVentaId] = useState<string | null>(null);
+  const ventaIdRef = useRef<string | null>(null);
+  const [isLoadingVenta, setIsLoadingVenta] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
   // Comanda
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
-  const [vendedorNombre, setVendedorNombre] = useState('');
-  const [inputVendedor, setInputVendedor] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
+
+  // Modal Confirmar Comanda
+  const [modalConfirmarOpen, setModalConfirmarOpen] = useState(false);
+  const [clienteNombre, setClienteNombre] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Alta Exprés
   const [modalAltaOpen, setModalAltaOpen] = useState(false);
   const [formAlta, setFormAlta] = useState({ nombre: '', precio_actual: '', codigo_barras: '', costo: '' });
   const [isCreando, setIsCreando] = useState(false);
+
+  // ── Keep ventaIdRef in sync ────────────────────────────────────────────
+  useEffect(() => {
+    ventaIdRef.current = ventaId;
+  }, [ventaId]);
+
+  // ── Fetch vendedores on mount ─────────────────────────────────────────
+  useEffect(() => {
+    api.get('/vendedores')
+      .then(({ data }) => {
+        console.log('Vendedores recibidos:', data);
+        const lista = Array.isArray(data) ? data : data.data ?? [];
+        setVendedores(lista);
+      })
+      .catch((err) => {
+        console.error('Error al cargar vendedores:', err);
+        toast.error('No se pudieron cargar los vendedores');
+      });
+  }, []);
 
   // ── Fetch productos ──────────────────────────────────────────────────────
   const fetchProductos = useCallback(async () => {
@@ -95,9 +137,9 @@ export default function NuevaVenta() {
       setMeta(data.meta);
     } catch (error: unknown) {
       if (error instanceof Error) {
-        alert('Error en el  celu: ' + error.message);
+        alert('Error en el celu: ' + error.message);
       } else {
-        alert('Error en el  celu: Error desconocido');
+        alert('Error en el celu: Error desconocido');
       }
       setErrorCatalogo('No se pudieron cargar los productos. Verificá que el servidor esté corriendo.');
     } finally {
@@ -123,26 +165,50 @@ export default function NuevaVenta() {
     localStorage.setItem('pos_stock_negativo', String(permitirStockNegativo));
   }, [permitirStockNegativo]);
 
-  // ── Restaurar vendedor del turno activo ──────────────────────────────────
+  // ── Fetch venta borrador al cambiar vendedor ──────────────────────────────
   useEffect(() => {
-    const saved = localStorage.getItem('pos_vendedor');
-    if (saved) setVendedorNombre(saved);
-  }, []);
+    if (!selectedVendedorId) {
+      setCarrito([]);
+      setVentaId(null);
+      return;
+    }
 
-  // ── Gestión de turno ─────────────────────────────────────────────────────
-  const fijarVendedor = () => {
-    const nombre = inputVendedor.trim();
-    if (!nombre) return;
-    localStorage.setItem('pos_vendedor', nombre);
-    setVendedorNombre(nombre);
-    setInputVendedor('');
-  };
+    let cancelled = false;
+    setIsLoadingVenta(true);
 
-  const cerrarTurno = () => {
-    localStorage.removeItem('pos_vendedor');
-    setVendedorNombre('');
-    setCarrito([]);
-  };
+    api.get('/ventas', { params: { vendedorId: selectedVendedorId, estado: 'BORRADOR' } })
+      .then(({ data }) => {
+        if (cancelled) return;
+        const ventas = Array.isArray(data) ? data : data.data ?? [];
+        if (ventas.length > 0) {
+          const venta = ventas[0];
+          setVentaId(venta.id);
+          setCarrito(
+            (venta.detalles || []).map((d: DetalleVenta) => ({
+              producto_id: d.producto_id,
+              nombre: d.nombre || d.producto?.nombre || 'Producto',
+              precio_unitario_historico: d.precio_unitario_historico,
+              cantidad: d.cantidad,
+              stock_local: d.producto?.stock_local ?? 0,
+            }))
+          );
+        } else {
+          setVentaId(null);
+          setCarrito([]);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        toast.error('Error al buscar venta en borrador');
+        setVentaId(null);
+        setCarrito([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingVenta(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedVendedorId]);
 
   // ── Total ────────────────────────────────────────────────────────────────
   const total = useMemo(
@@ -150,8 +216,41 @@ export default function NuevaVenta() {
     [carrito]
   );
 
+  // ── Sync carrito con backend ─────────────────────────────────────────────
+  const syncCarrito = useCallback(async (items: ItemCarrito[]) => {
+    if (!selectedVendedorId) return;
+
+    const detalles = items.map((item) => ({
+      producto_id: item.producto_id,
+      cantidad: item.cantidad,
+      precio_unitario_historico: item.precio_unitario_historico,
+    }));
+
+    try {
+      setIsSyncing(true);
+      if (!ventaIdRef.current) {
+        const { data } = await api.post('/ventas/borrador', {
+          vendedorId: selectedVendedorId,
+          detalles,
+        });
+        const newId = data.id ?? data.data?.id;
+        setVentaId(newId);
+      } else {
+        await api.put(`/ventas/${ventaIdRef.current}/borrador`, { detalles });
+      }
+    } catch {
+      toast.error('Error al sincronizar la comanda');
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [selectedVendedorId]);
+
   // ── Acciones del carrito ─────────────────────────────────────────────────
   const agregarAlCarrito = (producto: Producto) => {
+    if (!selectedVendedorId) {
+      toast.error('Seleccioná un vendedor primero');
+      return;
+    }
     if (!permitirStockNegativo && producto.stock_local <= 0) {
       toast.error('Stock insuficiente');
       return;
@@ -161,17 +260,16 @@ export default function NuevaVenta() {
       toast.error('Stock insuficiente');
       return;
     }
-    setCarrito((prev) => {
-      const item = prev.find((i) => i.producto_id === producto.id);
+
+    const nuevoCarrito = (() => {
+      const item = carrito.find((i) => i.producto_id === producto.id);
       if (item) {
-        return prev.map((i) =>
-          i.producto_id === producto.id
-            ? { ...i, cantidad: i.cantidad + 1 }
-            : i
+        return carrito.map((i) =>
+          i.producto_id === producto.id ? { ...i, cantidad: i.cantidad + 1 } : i
         );
       }
       return [
-        ...prev,
+        ...carrito,
         {
           producto_id: producto.id,
           nombre: producto.nombre,
@@ -180,7 +278,10 @@ export default function NuevaVenta() {
           stock_local: producto.stock_local,
         },
       ];
-    });
+    })();
+
+    setCarrito(nuevoCarrito);
+    syncCarrito(nuevoCarrito);
   };
 
   const cambiarCantidad = (producto_id: string, delta: number) => {
@@ -191,17 +292,20 @@ export default function NuevaVenta() {
         return;
       }
     }
-    setCarrito((prev) =>
-      prev
-        .map((i) =>
-          i.producto_id === producto_id ? { ...i, cantidad: i.cantidad + delta } : i
-        )
-        .filter((i) => i.cantidad > 0)
-    );
+    const nuevoCarrito = carrito
+      .map((i) =>
+        i.producto_id === producto_id ? { ...i, cantidad: i.cantidad + delta } : i
+      )
+      .filter((i) => i.cantidad > 0);
+
+    setCarrito(nuevoCarrito);
+    syncCarrito(nuevoCarrito);
   };
 
   const eliminarItem = (producto_id: string) => {
-    setCarrito((prev) => prev.filter((i) => i.producto_id !== producto_id));
+    const nuevoCarrito = carrito.filter((i) => i.producto_id !== producto_id);
+    setCarrito(nuevoCarrito);
+    syncCarrito(nuevoCarrito);
   };
 
   const cantidadEnCarrito = (producto_id: string) =>
@@ -228,16 +332,16 @@ export default function NuevaVenta() {
         ...(formAlta.costo && !isNaN(parseFloat(formAlta.costo)) ? { costo: parseFloat(formAlta.costo) } : {}),
         ...(formAlta.codigo_barras.trim() && { codigo_barras: formAlta.codigo_barras.trim() }),
       });
-      // Agregar directamente al carrito (stock_local=0, se permite por ser Alta Exprés)
-      setCarrito((prev) => {
-        const existe = prev.find((i) => i.producto_id === nuevo.id);
+
+      const nuevoCarrito = (() => {
+        const existe = carrito.find((i) => i.producto_id === nuevo.id);
         if (existe) {
-          return prev.map((i) =>
+          return carrito.map((i) =>
             i.producto_id === nuevo.id ? { ...i, cantidad: i.cantidad + 1 } : i
           );
         }
         return [
-          ...prev,
+          ...carrito,
           {
             producto_id: nuevo.id,
             nombre: nuevo.nombre,
@@ -246,7 +350,10 @@ export default function NuevaVenta() {
             stock_local: 0,
           },
         ];
-      });
+      })();
+
+      setCarrito(nuevoCarrito);
+      if (selectedVendedorId) syncCarrito(nuevoCarrito);
       toast.success('Producto creado y agregado al carrito.');
       setModalAltaOpen(false);
       setFormAlta({ nombre: '', precio_actual: '', codigo_barras: '', costo: '' });
@@ -257,35 +364,40 @@ export default function NuevaVenta() {
     }
   };
 
-  // ── Submit ───────────────────────────────────────────────────────────────
-  const handleGenerarComanda = async () => {
-    if (!vendedorNombre) {
-      alert('Por favor, seleccioná un vendedor antes de continuar.');
+  // ── Confirmar Comanda ────────────────────────────────────────────────────
+  const handleAbrirConfirmar = () => {
+    if (!selectedVendedorId) {
+      toast.error('Seleccioná un vendedor antes de continuar.');
       return;
     }
     if (carrito.length === 0) {
-      alert('El carrito está vacío. Agregá al menos un producto.');
+      toast.error('El carrito está vacío. Agregá al menos un producto.');
       return;
     }
+    setClienteNombre('');
+    setModalConfirmarOpen(true);
+  };
 
-    const payload = {
-      vendedor_nombre: vendedorNombre,
-      descuento_total: 0,
-      detalles: carrito.map((item) => ({
-        producto_id: item.producto_id,
-        cantidad: item.cantidad,
-        precio_unitario_historico: item.precio_unitario_historico,
-      })),
-    };
-
+  const handleConfirmarComanda = async () => {
+    if (!ventaIdRef.current) {
+      toast.error('No hay una venta activa para confirmar.');
+      return;
+    }
     try {
       setIsSubmitting(true);
-      await api.post(`/ventas`, payload);
-      alert('✅ Comanda enviada a la caja');
+      await api.post(`/ventas/${ventaIdRef.current}/confirmar`, {
+        ...(clienteNombre.trim() && { cliente_nombre: clienteNombre.trim() }),
+      });
+      toast.success('✅ Comanda confirmada y enviada a la caja');
+
+      // Reset carrito pero mantener vendedor seleccionado
       setCarrito([]);
+      setVentaId(null);
+      setModalConfirmarOpen(false);
+      setClienteNombre('');
       await fetchProductos();
     } catch {
-      alert('❌ Error al enviar la comanda. Intentá de nuevo.');
+      toast.error('Error al confirmar la comanda. Intentá de nuevo.');
     } finally {
       setIsSubmitting(false);
     }
@@ -313,40 +425,38 @@ export default function NuevaVenta() {
 
               {/* Toggle: Permitir stock negativo */}
               <button
-              onClick={() => setPermitirStockNegativo((prev) => !prev)}
-              className={`
-                flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-200
-                ${permitirStockNegativo
-                  ? 'bg-amber-50 border-amber-300 text-amber-700'
-                  : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-gray-300'
-                }
-              `}
-              title="Permitir venta sin stock (Modo Transición)"
-            >
-
-              {/* Track del switch */}
-              <span
+                onClick={() => setPermitirStockNegativo((prev) => !prev)}
                 className={`
-                  relative inline-flex w-8 h-4 rounded-full transition-colors duration-200 shrink-0
-                  ${permitirStockNegativo ? 'bg-amber-400' : 'bg-gray-300'}
+                  flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-200
+                  ${permitirStockNegativo
+                    ? 'bg-amber-50 border-amber-300 text-amber-700'
+                    : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-gray-300'
+                  }
                 `}
+                title="Permitir venta sin stock (Modo Transición)"
               >
                 <span
                   className={`
-                    absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform duration-200
-                    ${permitirStockNegativo ? 'translate-x-4' : 'translate-x-0'}
+                    relative inline-flex w-8 h-4 rounded-full transition-colors duration-200 shrink-0
+                    ${permitirStockNegativo ? 'bg-amber-400' : 'bg-gray-300'}
                   `}
-                />
-              </span>
-              <span className="hidden sm:inline leading-none">
-                {permitirStockNegativo ? (
-                  <span className="flex items-center gap-1">
-                    <AlertTriangle size={11} />
-                    Modo Transición
-                  </span>
-                ) : 'Venta sin stock'}
-              </span>
-            </button>
+                >
+                  <span
+                    className={`
+                      absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform duration-200
+                      ${permitirStockNegativo ? 'translate-x-4' : 'translate-x-0'}
+                    `}
+                  />
+                </span>
+                <span className="hidden sm:inline leading-none">
+                  {permitirStockNegativo ? (
+                    <span className="flex items-center gap-1">
+                      <AlertTriangle size={11} />
+                      Modo Transición
+                    </span>
+                  ) : 'Venta sin stock'}
+                </span>
+              </button>
             </div>
           </div>
 
@@ -375,7 +485,7 @@ export default function NuevaVenta() {
           {permitirStockNegativo && (
             <div className="mt-2.5 flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-medium px-3 py-2 rounded-lg">
               <AlertTriangle size={13} className="shrink-0" />
-              Modo Transición activo: pods vender productos sin stock.
+              Modo Transición activo: podés vender productos sin stock.
             </div>
           )}
         </div>
@@ -415,8 +525,7 @@ export default function NuevaVenta() {
               {productos.map((producto) => {
                 const enCarrito = cantidadEnCarrito(producto.id);
                 const sinStock = producto.stock_local <= 0;
-                // En modo transición, solo se bloquea por falta de vendedor
-                const bloqueada = !vendedorNombre || (!permitirStockNegativo && sinStock);
+                const bloqueada = !selectedVendedorId || isLoadingVenta || (!permitirStockNegativo && sinStock);
                 return (
                   <button
                     key={producto.id}
@@ -432,7 +541,6 @@ export default function NuevaVenta() {
                       ${sinStock && permitirStockNegativo && !bloqueada ? 'border-amber-300 ring-1 ring-amber-100' : ''}
                     `}
                   >
-                    {/* Badge cantidad en carrito */}
                     {enCarrito > 0 && (
                       <span className="absolute top-2 right-2 bg-indigo-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
                         {enCarrito}
@@ -459,7 +567,6 @@ export default function NuevaVenta() {
                       {formatPrecio(producto.precio_actual)}
                     </p>
 
-                    {/* Indicador de stock contextual */}
                     {sinStock ? (
                       <p className={`text-xs font-medium mt-1 flex items-center gap-1 ${
                         permitirStockNegativo ? 'text-amber-500' : 'text-red-400'
@@ -541,8 +648,6 @@ export default function NuevaVenta() {
 
       {/* ══════════════════════════════════════════════════════
           COLUMNA DERECHA — Comanda Actual
-          Desktop: columna fija derecha
-          Móvil: sheet desde abajo
       ══════════════════════════════════════════════════════ */}
       <div className={`
         md:w-96 md:flex md:flex-col md:bg-white md:shadow-xl md:static md:translate-y-0
@@ -559,9 +664,12 @@ export default function NuevaVenta() {
             <ShoppingCart size={20} className="text-indigo-500" />
             <h2 className="text-lg font-bold text-gray-800">Comanda Actual</h2>
             {carrito.length > 0 && (
-              <span className="ml-auto bg-indigo-100 text-indigo-600 text-xs font-bold px-2 py-0.5 rounded-full">
+              <span className="bg-indigo-100 text-indigo-600 text-xs font-bold px-2 py-0.5 rounded-full">
                 {carrito.reduce((acc, i) => acc + i.cantidad, 0)} ítems
               </span>
+            )}
+            {isSyncing && (
+              <Loader2 size={14} className="animate-spin text-indigo-400 ml-1" />
             )}
             {/* Botón cerrar — solo móvil */}
             <button
@@ -573,59 +681,51 @@ export default function NuevaVenta() {
             </button>
           </div>
 
-          {/* Vendedor del turno */}
-          {vendedorNombre ? (
-            /* Píldora: turno activo */
-            <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-2.5">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="p-1.5 bg-indigo-100 rounded-full shrink-0">
-                  <User size={13} className="text-indigo-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest leading-none mb-0.5">
-                    Turno activo
-                  </p>
-                  <p className="text-sm font-bold text-indigo-700 truncate">{vendedorNombre}</p>
-                </div>
-              </div>
-              <button
-                onClick={cerrarTurno}
-                title="Cerrar turno"
-                className="ml-2 p-1.5 rounded-lg text-indigo-400 hover:bg-indigo-100 hover:text-indigo-600 transition-colors shrink-0"
-              >
-                <LogOut size={15} />
-              </button>
+          {/* ── Dropdown de Vendedor ─────────────────────────────────────── */}
+          <div className="relative">
+            <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400 pointer-events-none z-10" />
+            <select
+              value={selectedVendedorId}
+              onChange={(e) => setSelectedVendedorId(e.target.value)}
+              className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-sm font-semibold text-gray-700 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition cursor-pointer"
+            >
+              <option value="">Seleccionar Vendedor</option>
+              {vendedores.map((v) => (
+                <option key={v.id} value={v.id}>{v.nombre}</option>
+              ))}
+            </select>
+            <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-indigo-400 pointer-events-none" />
+          </div>
+
+          {/* Indicador de carga de borrador */}
+          {isLoadingVenta && (
+            <div className="flex items-center gap-2 mt-2.5 text-indigo-500 text-xs font-medium">
+              <Loader2 size={13} className="animate-spin" />
+              Buscando comanda en borrador…
             </div>
-          ) : (
-            /* Input: iniciar turno */
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-400 pointer-events-none" />
-                <input
-                  type="text"
-                  value={inputVendedor}
-                  onChange={(e) => setInputVendedor(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && fijarVendedor()}
-                  placeholder="Nombre de quien atiende..."
-                  autoComplete="off"
-                  autoFocus
-                  className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-amber-300 bg-amber-50 text-sm text-gray-700 placeholder-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-transparent transition"
-                />
-              </div>
-              <button
-                onClick={fijarVendedor}
-                disabled={!inputVendedor.trim()}
-                className="px-3 py-2 rounded-lg text-sm font-bold bg-amber-400 hover:bg-amber-500 active:scale-95 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0"
-              >
-                Iniciar
-              </button>
+          )}
+
+          {/* Indicador de venta activa */}
+          {!isLoadingVenta && selectedVendedorId && ventaId && (
+            <div className="flex items-center gap-2 mt-2.5 bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-medium px-3 py-1.5 rounded-lg">
+              <CheckCircle size={12} />
+              Borrador cargado — los cambios se guardan automáticamente
             </div>
           )}
         </div>
 
         {/* Lista de ítems */}
         <div className="flex-1 overflow-y-auto">
-          {carrito.length === 0 ? (
+          {!selectedVendedorId ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-300 gap-3 p-6">
+              <User size={52} strokeWidth={1.5} />
+              <p className="text-sm font-medium text-gray-400 text-center">
+                Seleccioná un vendedor
+                <br />
+                <span className="text-gray-300">para comenzar a armar la comanda.</span>
+              </p>
+            </div>
+          ) : carrito.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-300 gap-3 p-6">
               <ShoppingCart size={52} strokeWidth={1.5} />
               <p className="text-sm font-medium text-gray-400 text-center">
@@ -638,7 +738,6 @@ export default function NuevaVenta() {
             <ul className="divide-y divide-gray-50 px-4 py-2">
               {carrito.map((item) => (
                 <li key={item.producto_id} className="py-3.5">
-                  {/* Nombre */}
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <p className="text-sm font-semibold text-gray-800 leading-tight line-clamp-2 flex-1">
                       {item.nombre}
@@ -652,13 +751,11 @@ export default function NuevaVenta() {
                     </button>
                   </div>
 
-                  {/* Precio unitario + controles + subtotal */}
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs text-gray-400">
                       {formatPrecio(item.precio_unitario_historico)} c/u
                     </p>
 
-                    {/* Controles cantidad */}
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => cambiarCantidad(item.producto_id, -1)}
@@ -678,7 +775,6 @@ export default function NuevaVenta() {
                       </button>
                     </div>
 
-                    {/* Subtotal */}
                     <p className="text-sm font-bold text-gray-800 min-w-[70px] text-right">
                       {formatPrecio(item.precio_unitario_historico * item.cantidad)}
                     </p>
@@ -691,7 +787,6 @@ export default function NuevaVenta() {
 
         {/* Footer — Total + botón */}
         <div className="p-5 border-t border-gray-100 bg-gray-50">
-          {/* Total */}
           <div className="flex items-center justify-between mb-4">
             <span className="text-base font-semibold text-gray-500">Total a cobrar</span>
             <span className="text-2xl font-black text-gray-900">
@@ -699,41 +794,112 @@ export default function NuevaVenta() {
             </span>
           </div>
 
-          {/* Botón generar comanda */}
           <button
-            onClick={handleGenerarComanda}
-            disabled={isSubmitting || carrito.length === 0 || !vendedorNombre}
+            onClick={handleAbrirConfirmar}
+            disabled={isSubmitting || carrito.length === 0 || !selectedVendedorId || isLoadingVenta}
             className={`
               w-full py-4 rounded-xl text-base font-bold flex items-center justify-center gap-2.5 transition-all duration-200
-              ${isSubmitting || carrito.length === 0 || !vendedorNombre
+              ${isSubmitting || carrito.length === 0 || !selectedVendedorId || isLoadingVenta
                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                 : 'bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-lg shadow-indigo-200 hover:shadow-indigo-300'
               }
             `}
           >
-            {isSubmitting ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                Enviando...
-              </>
-            ) : (
-              <>
-                <CheckCircle size={20} />
-                Generar Comanda
-              </>
-            )}
+            <CheckCircle size={20} />
+            Confirmar Comanda
           </button>
 
-          {/* Hint de validación */}
-          {(carrito.length === 0 || !vendedorNombre) && !isSubmitting && (
+          {(carrito.length === 0 || !selectedVendedorId) && !isSubmitting && (
             <p className="text-xs text-center text-gray-400 mt-2">
-              {!vendedorNombre
-                ? 'Iniciá tu turno para comenzar a vender'
+              {!selectedVendedorId
+                ? 'Seleccioná un vendedor para comenzar a vender'
                 : 'Agregá al menos un producto al carrito'}
             </p>
           )}
         </div>
       </div>
+
+      {/* ══ Modal: Confirmar Comanda ════════════════════════════════════════════ */}
+      {modalConfirmarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setModalConfirmarOpen(false); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-50 rounded-xl">
+                  <CheckCircle size={16} className="text-indigo-600" />
+                </div>
+                <h2 className="text-base font-bold text-gray-800">Confirmar Comanda</h2>
+              </div>
+              <button
+                onClick={() => setModalConfirmarOpen(false)}
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Resumen */}
+            <div className="px-6 py-5 space-y-4">
+              <div className="bg-gray-50 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total</span>
+                  <span className="text-lg font-black text-gray-900">{formatPrecio(total)}</span>
+                </div>
+                <p className="text-xs text-gray-400">
+                  {carrito.reduce((acc, i) => acc + i.cantidad, 0)} productos · Vendedor: {vendedores.find((v) => v.id === selectedVendedorId)?.nombre}
+                </p>
+              </div>
+
+              {/* Nombre del cliente */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Nombre del Cliente / Referencia <span className="font-normal text-gray-400">(opcional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={clienteNombre}
+                  onChange={(e) => setClienteNombre(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleConfirmarComanda()}
+                  placeholder="Ej: Mesa 3, Juan, etc."
+                  autoFocus
+                  autoComplete="off"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+                />
+              </div>
+            </div>
+
+            {/* Acciones */}
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <button
+                onClick={() => setModalConfirmarOpen(false)}
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmarComanda}
+                disabled={isSubmitting}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+                  isSubmitting
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm'
+                }`}
+              >
+                {isSubmitting
+                  ? <><Loader2 size={15} className="animate-spin" /> Enviando...</>
+                  : <><CheckCircle size={15} /> Confirmar</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ Modal: Alta Exprés ══════════════════════════════════════════════════ */}
       {modalAltaOpen && (
         <div
@@ -759,7 +925,6 @@ export default function NuevaVenta() {
 
             {/* Formulario */}
             <div className="px-6 py-5 space-y-4">
-              {/* Código de barras */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
                   Código de barras <span className="font-normal text-gray-400">(opcional)</span>
@@ -774,7 +939,6 @@ export default function NuevaVenta() {
                 />
               </div>
 
-              {/* Nombre */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
                   Nombre <span className="text-red-400">*</span>
@@ -791,7 +955,6 @@ export default function NuevaVenta() {
                 />
               </div>
 
-              {/* Precio */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
                   Precio de venta <span className="text-red-400">*</span>
@@ -811,7 +974,6 @@ export default function NuevaVenta() {
                 </div>
               </div>
 
-              {/* Costo */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
                   Costo <span className="font-normal text-gray-400">(opcional)</span>
