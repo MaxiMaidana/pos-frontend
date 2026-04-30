@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axiosClient';
 import { RECARGOS_CREDITO } from '../utils/constants';
+import PaymentConfig from '../components/PaymentConfig';
 import { isWebMode } from '../utils/env';
 import {
   DollarSign,
@@ -870,6 +871,9 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {/* ── Configuración de Pagos ─────────────────────────────────── */}
+        <PaymentConfig />
       </div>
 
       {/* ══════════════════════════════════════════════════════════════

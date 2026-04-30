@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import api from '../api/axiosClient';
 import SyncButton from '../components/SyncButton';
-import { RECARGOS_CREDITO, CUOTAS_CREDITO } from '../utils/constants';
+
 import {
   Wallet,
   User,
@@ -86,9 +86,6 @@ interface Arqueo {
   total_esperado?: number;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const formatPrecio = (valor: number) =>
@@ -135,6 +132,33 @@ export default function Caja() {
   const [arqueo, setArqueo] = useState<Arqueo | null>(null);
   const [montoCierre, setMontoCierre] = useState('');
   const [isLoadingArqueo, setIsLoadingArqueo] = useState(false);
+
+  // ── Recargos dinámicos (desde GET /api/config) ───────────────────────────
+  const [recargosCredito, setRecargosCredito] = useState<Record<number, number>>({});
+  const [cuotasCredito, setCuotasCredito] = useState<number[]>([]);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+
+  const fetchConfig = useCallback(async () => {
+    try {
+      setIsLoadingConfig(true);
+      const { data } = await api.get<{ recargos_credito?: Record<string, number> }>('/config');
+      const raw = data?.recargos_credito ?? {};
+      const parsed: Record<number, number> = {};
+      for (const [k, v] of Object.entries(raw)) {
+        parsed[Number(k)] = Number(v);
+      }
+      setRecargosCredito(parsed);
+      setCuotasCredito(Object.keys(parsed).map(Number).sort((a, b) => a - b));
+    } catch {
+      // Keep previous values on error
+    } finally {
+      setIsLoadingConfig(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchConfig();
+  }, [fetchConfig]);
 
   // ── Fetch ventas pendientes ──────────────────────────────────────────────
   const fetchVentas = useCallback(async () => {
@@ -242,7 +266,7 @@ export default function Caja() {
     const recargoCobro = pagos.reduce((acc, p) => {
       if (p.metodo === 'TARJETA' && p.tipoTarjeta === 'CREDITO' && p.cuotas) {
         const base = pagos.length === 1 ? baseTotal : (parseFloat(p.monto) || 0);
-        return acc + base * (RECARGOS_CREDITO[p.cuotas] ?? 0);
+        return acc + base * (recargosCredito[p.cuotas] ?? 0);
       }
       return acc;
     }, 0);
@@ -263,7 +287,7 @@ export default function Caja() {
               metodo: resolverMetodo(p),
               monto:
                 p.metodo === 'TARJETA' && p.tipoTarjeta === 'CREDITO' && p.cuotas
-                  ? (parseFloat(p.monto) || 0) * (1 + (RECARGOS_CREDITO[p.cuotas] ?? 0))
+                  ? (parseFloat(p.monto) || 0) * (1 + (recargosCredito[p.cuotas] ?? 0))
                   : parseFloat(p.monto) || 0,
               cuotas: p.cuotas,
             })),
@@ -757,7 +781,7 @@ export default function Caja() {
           const montoRecargo = pagos.reduce((acc, p) => {
             if (p.metodo === 'TARJETA' && p.tipoTarjeta === 'CREDITO' && p.cuotas) {
               const base = pagos.length === 1 ? total : (parseFloat(p.monto) || 0);
-              return acc + base * (RECARGOS_CREDITO[p.cuotas] ?? 0);
+              return acc + base * (recargosCredito[p.cuotas] ?? 0);
             }
             return acc;
           }, 0);
@@ -992,9 +1016,9 @@ export default function Caja() {
                                       className="px-2.5 py-1 rounded-lg border border-purple-200 bg-purple-50 text-xs text-purple-700 font-semibold focus:outline-none focus:ring-2 focus:ring-purple-300 cursor-pointer transition"
                                     >
                                       <option value="">Cuotas…</option>
-                                      {CUOTAS_CREDITO.map((c) => (
+                                      {cuotasCredito.map((c) => (
                                         <option key={c} value={c}>
-                                          {c} cuota{c !== 1 ? 's' : ''} (+{RECARGOS_CREDITO[c] * 100}%)
+                                          {c} cuota{c !== 1 ? 's' : ''} (+{(recargosCredito[c] ?? 0) * 100}%)
                                         </option>
                                       ))}
                                     </select>
@@ -1021,7 +1045,7 @@ export default function Caja() {
                                             </tr>
                                           </thead>
                                           <tbody>
-                                            {CUOTAS_CREDITO.map((c) => (
+                                            {cuotasCredito.map((c) => (
                                               <tr
                                                 key={c}
                                                 className={`${
@@ -1034,7 +1058,7 @@ export default function Caja() {
                                                   {c} cuota{c !== 1 ? 's' : ''}
                                                 </td>
                                                 <td className="text-right font-semibold">
-                                                  {RECARGOS_CREDITO[c] * 100}%
+                                                  {(recargosCredito[c] ?? 0) * 100}%
                                                 </td>
                                               </tr>
                                             ))}
@@ -1044,6 +1068,17 @@ export default function Caja() {
                                         <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800" />
                                       </div>
                                     </div>
+
+                                    {/* Botón actualizar recargos */}
+                                    <button
+                                      type="button"
+                                      onClick={fetchConfig}
+                                      disabled={isLoadingConfig}
+                                      className="p-1 rounded-lg text-gray-400 hover:text-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-40"
+                                      title="Actualizar cuotas y recargos"
+                                    >
+                                      <RefreshCw size={13} className={isLoadingConfig ? 'animate-spin' : ''} />
+                                    </button>
                                   </>
                                 )}
                               </div>
@@ -1086,7 +1121,7 @@ export default function Caja() {
                                   p.tipoTarjeta === 'CREDITO' &&
                                   !!p.cuotas;
                                 const recargo = esCreditoConCuotas
-                                  ? base * (RECARGOS_CREDITO[p.cuotas!] ?? 0)
+                                  ? base * (recargosCredito[p.cuotas!] ?? 0)
                                   : 0;
                                 const montoFinal = base + recargo;
 
