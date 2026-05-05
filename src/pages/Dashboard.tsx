@@ -48,6 +48,7 @@ interface Stats {
 }
 
 interface VendedorAnalitica {
+  vendedorId?: string;
   vendedor_nombre?: string;
   nombre?: string;
   vendedor?: string;
@@ -90,6 +91,13 @@ interface Analiticas {
   reporteCajas: CajaAnalitica[];
 }
 
+interface MetaPaginacion {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 interface DetalleVenta {
   cantidad: number;
   producto?: { nombre?: string };
@@ -109,6 +117,10 @@ interface VentaDetalle {
   total: number;
   detalles?: DetalleVenta[];
   pagos?: PagoVenta[];
+  sesion?: {
+    cajero_nombre?: string;
+    caja?: { nombre?: string };
+  };
 }
 
 interface ProductoStock {
@@ -213,7 +225,14 @@ export default function Dashboard() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [totalInteresesCredito, setTotalInteresesCredito] = useState(0);
   const [busquedaStock, setBusquedaStock] = useState('');
+  const [debouncedBusquedaStock, setDebouncedBusquedaStock] = useState('');
   const [totalStockBajo, setTotalStockBajo] = useState(0);
+  const [stockPage, setStockPage] = useState(1);
+
+  // Paginación del modal
+  const [modalPage, setModalPage] = useState(1);
+  const [modalMeta, setModalMeta] = useState<MetaPaginacion | null>(null);
+  const [modalVentaParams, setModalVentaParams] = useState<Record<string, string> | null>(null);
 
   // ── Carga de sucursales ───────────────────────────────────────────────
   useEffect(() => {
@@ -336,6 +355,9 @@ export default function Dashboard() {
     setModalTitle(titulo);
     setVentasDetalle([]);
     setProductosStock([]);
+    setModalPage(1);
+    setModalMeta(null);
+    setModalVentaParams(null);
     setModalOpen(true);
 
     if (tipo === 'recaudacion') {
@@ -371,21 +393,20 @@ export default function Dashboard() {
       if (tipo === 'stock') {
         setModalTipo('stock');
         setBusquedaStock('');
-        const { data } = await api.get(`/productos`, {
-          params: { stockBajo: true, ...(tiendaSeleccionada && { tienda_id: tiendaSeleccionada }) },
-        });
-        const productos: ProductoStock[] = Array.isArray(data) ? data : (data as { data?: ProductoStock[] }).data ?? [];
-        const total = (data as { meta?: { total?: number } })?.meta?.total ?? productos.length;
-        setProductosStock(productos);
-        setTotalStockBajo(total);
+        setDebouncedBusquedaStock('');
+        setStockPage(1);
+        // El useEffect [modalOpen, modalTipo, debouncedBusquedaStock, stockPage] se encarga del fetch
+        return;
       } else {
         setModalTipo('venta');
-        const params =
-          tipo === 'vendedor' ? { fecha, vendedor_nombre: id }
+        const baseParams: Record<string, string> =
+          tipo === 'vendedor' ? { fecha, vendedorId: id }
           : tipo === 'ventas_estado' ? { fecha, estado: id }
           : { fecha, sesion_id: id };
-        const { data } = await api.get<VentaDetalle[]>(`/ventas`, { params });
-        setVentasDetalle(Array.isArray(data) ? data : (data as { data?: VentaDetalle[] }).data ?? []);
+        setModalVentaParams(baseParams);
+        setModalPage(1);
+        // El useEffect [modalOpen, modalTipo, modalVentaParams, modalPage] se encarga del fetch
+        return;
       }
     } catch {
       // states already reset above
@@ -393,6 +414,73 @@ export default function Dashboard() {
       setLoadingDetalle(false);
     }
   };
+
+  // ── Debounce búsqueda stock ────────────────────────────────────────────────
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setStockPage(1);
+      setDebouncedBusquedaStock(busquedaStock);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [busquedaStock]);
+
+  // ── Fetch productos stock bajo (server-side search, client-side pagination) ─
+  useEffect(() => {
+    if (!modalOpen || modalTipo !== 'stock') return;
+
+    let cancelled = false;
+    const fetchStock = async () => {
+      setLoadingDetalle(true);
+      try {
+        const { data } = await api.get(`/productos`, {
+          params: {
+            stockBajo: true,
+            ...(tiendaSeleccionada && { tienda_id: tiendaSeleccionada }),
+            ...(debouncedBusquedaStock && { search: debouncedBusquedaStock }),
+          },
+        });
+        if (cancelled) return;
+        const productos: ProductoStock[] = Array.isArray(data)
+          ? data
+          : (data as { data?: ProductoStock[] }).data ?? [];
+        setProductosStock(productos);
+        setTotalStockBajo(productos.length);
+        setStockPage(1);
+      } catch {
+        // keep current state
+      } finally {
+        if (!cancelled) setLoadingDetalle(false);
+      }
+    };
+    fetchStock();
+    return () => { cancelled = true; };
+  }, [modalOpen, modalTipo, debouncedBusquedaStock, tiendaSeleccionada]);
+
+  // ── Re-fetch al cambiar de página en el modal ──────────────────────────────
+  useEffect(() => {
+    if (!modalOpen || modalTipo !== 'venta' || !modalVentaParams) return;
+
+    let cancelled = false;
+    const fetchPage = async () => {
+      setLoadingDetalle(true);
+      try {
+        const { data } = await api.get(`/ventas`, {
+          params: { ...modalVentaParams, limit: 10, page: modalPage },
+        });
+        if (cancelled) return;
+        const ventas: VentaDetalle[] = Array.isArray(data) ? data : (data as { data?: VentaDetalle[] }).data ?? [];
+        const meta: MetaPaginacion | undefined = (data as { meta?: MetaPaginacion })?.meta ?? undefined;
+        setVentasDetalle(ventas);
+        setModalMeta(meta ?? null);
+      } catch {
+        // keep current state
+      } finally {
+        if (!cancelled) setLoadingDetalle(false);
+      }
+    };
+    fetchPage();
+    return () => { cancelled = true; };
+  }, [modalOpen, modalTipo, modalVentaParams, modalPage]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -633,7 +721,7 @@ export default function Dashboard() {
                         className="hover:bg-indigo-50 cursor-pointer transition-colors"
                         onClick={() => handleOpenModal(
                           'vendedor',
-                          v?.vendedor_nombre || v?.nombre || v?.vendedor || '',
+                          v?.vendedorId || '',
                           'Ventas de ' + (v?.vendedor_nombre || v?.nombre || v?.vendedor || 'Desconocido')
                         )}
                         title="Ver detalle de ventas"
@@ -882,7 +970,7 @@ export default function Dashboard() {
       {modalOpen && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setModalOpen(false); }}
+          onClick={(e) => { if (e.target === e.currentTarget) { setModalOpen(false); setModalPage(1); setModalMeta(null); setBusquedaStock(''); setDebouncedBusquedaStock(''); setStockPage(1); } }}
         >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
 
@@ -907,7 +995,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <button
-                onClick={() => setModalOpen(false)}
+                onClick={() => { setModalOpen(false); setModalPage(1); setModalMeta(null); setBusquedaStock(''); setDebouncedBusquedaStock(''); setStockPage(1); }}
                 className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
               >
                 <X size={18} />
@@ -1065,35 +1153,36 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Sin datos — stock */}
-              {!loadingDetalle && modalTipo === 'stock' && productosStock.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-300">
-                  <Package size={40} strokeWidth={1.5} />
-                  <p className="text-sm text-gray-400">No hay productos con stock bajo. ✅</p>
-                </div>
-              )}
-
               {/* Lista de ventas */}
               {!loadingDetalle && modalTipo === 'venta' && ventasDetalle.length > 0 && (
                 <div className="space-y-3">
                   {ventasDetalle.map((venta) => (
                     <div key={venta.id} className="bg-gray-50 rounded-xl border border-gray-100 p-4">
                       <div className="flex items-start justify-between gap-3 mb-3">
-                        <div className="flex items-center gap-3">
-                          {/* Hora */}
-                          <span className="text-xs font-mono text-gray-500 bg-white border border-gray-200 px-2 py-1 rounded-lg">
-                            {new Date(venta.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                          {/* Estado */}
-                          <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                            venta.estado === 'PAGADA'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : venta.estado === 'ANULADA'
-                              ? 'bg-red-100 text-red-600'
-                              : 'bg-gray-100 text-gray-500'
-                          }`}>
-                            {venta.estado}
-                          </span>
+                        <div>
+                          <div className="flex items-center gap-3">
+                            {/* Hora */}
+                            <span className="text-xs font-mono text-gray-500 bg-white border border-gray-200 px-2 py-1 rounded-lg">
+                              {new Date(venta.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            {/* Estado */}
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                              venta.estado === 'PAGADA'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : venta.estado === 'ANULADA'
+                                ? 'bg-red-100 text-red-600'
+                                : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              {venta.estado}
+                            </span>
+                          </div>
+                          {venta.sesion && (venta.sesion.cajero_nombre || venta.sesion.caja?.nombre) && (
+                            <p className="text-[11px] text-gray-400 mt-1.5 ml-0.5">
+                              {venta.sesion.cajero_nombre && <>por <span className="font-medium text-gray-500">{venta.sesion.cajero_nombre}</span></>}
+                              {venta.sesion.cajero_nombre && venta.sesion.caja?.nombre && ' en '}
+                              {venta.sesion.caja?.nombre && <span className="font-medium text-gray-500">{venta.sesion.caja.nombre}</span>}
+                            </p>
+                          )}
                         </div>
                         {/* Total */}
                         <span className="text-base font-black text-gray-900">
@@ -1159,36 +1248,29 @@ export default function Dashboard() {
               )}
 
               {/* Lista de productos con stock bajo */}
-              {!loadingDetalle && modalTipo === 'stock' && productosStock.length > 0 && (() => {
-                const term = busquedaStock.toLowerCase();
-                const filtrados = productosStock
-                  .filter((p) =>
-                    !term ||
-                    p.nombre.toLowerCase().includes(term) ||
-                    p.codigo_barras?.toLowerCase().includes(term) ||
-                    p.marca?.toLowerCase().includes(term) ||
-                    p.proveedor?.toLowerCase().includes(term)
-                  )
-                  .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+              {!loadingDetalle && modalTipo === 'stock' && (
+                <div className="space-y-3">
+                  {/* Buscador */}
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={busquedaStock}
+                      onChange={(e) => setBusquedaStock(e.target.value)}
+                      placeholder="Buscar por nombre, código, marca o proveedor…"
+                      className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-transparent transition"
+                    />
+                  </div>
 
-                return (
-                  <div className="space-y-3">
-                    {/* Buscador */}
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      <input
-                        type="text"
-                        value={busquedaStock}
-                        onChange={(e) => setBusquedaStock(e.target.value)}
-                        placeholder="Buscar por nombre, código, marca o proveedor…"
-                        className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-transparent transition"
-                      />
+                  {productosStock.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-300">
+                      <Package size={40} strokeWidth={1.5} />
+                      <p className="text-sm text-gray-400">
+                        {busquedaStock ? `Sin resultados para "${busquedaStock}"` : 'No hay productos con stock bajo.'}
+                      </p>
                     </div>
-
-                    {filtrados.length === 0 ? (
-                      <p className="text-sm text-gray-400 text-center py-8">Sin resultados para "{busquedaStock}"</p>
-                    ) : (
-                      filtrados.map((producto) => (
+                  ) : (
+                    productosStock.slice((stockPage - 1) * 10, stockPage * 10).map((producto) => (
                         <div
                           key={producto.id}
                           className="bg-gray-50 rounded-xl border border-gray-100 p-4 flex items-center justify-between gap-4"
@@ -1244,38 +1326,72 @@ export default function Dashboard() {
                       ))
                     )}
                   </div>
-                );
-              })()}
+                )}
             </div>
 
             {/* Footer */}
             {!loadingDetalle && modalTipo !== 'recaudacion' && (modalTipo === 'stock' ? productosStock.length > 0 : ventasDetalle.length > 0) && (
               <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 rounded-b-2xl shrink-0">
-                <p className="text-xs text-gray-400">
-                  {modalTipo === 'stock' ? (() => {
-                    const term = busquedaStock.toLowerCase();
-                    const count = productosStock.filter((p) =>
-                      !term ||
-                      p.nombre.toLowerCase().includes(term) ||
-                      p.codigo_barras?.toLowerCase().includes(term) ||
-                      p.marca?.toLowerCase().includes(term) ||
-                      p.proveedor?.toLowerCase().includes(term)
-                    ).length;
-                    return (
-                      <>
-                        Mostrando <span className="font-bold text-gray-600">{busquedaStock ? count : productosStock.length}</span> de{' '}
+                {modalTipo === 'stock' ? (() => {
+                  const totalPages = Math.ceil(productosStock.length / 10);
+                  return (
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-gray-400">
                         <span className="font-bold text-gray-600">{totalStockBajo.toLocaleString('es-AR')}</span>{' '}
                         producto{totalStockBajo !== 1 ? 's' : ''} con stock bajo
-                        {busquedaStock && ` (filtro local)`}
-                      </>
-                    );
-                  })() : (
-                    <>
-                      <span className="font-bold text-gray-600">{ventasDetalle.length}</span>{' '}
-                      venta{ventasDetalle.length !== 1 ? 's' : ''} encontrada{ventasDetalle.length !== 1 ? 's' : ''}
-                    </>
-                  )}
-                </p>
+                      </p>
+                      {totalPages > 1 && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            disabled={stockPage <= 1}
+                            onClick={() => setStockPage((p) => Math.max(1, p - 1))}
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Anterior
+                          </button>
+                          <span className="text-xs text-gray-500">
+                            Página <span className="font-semibold text-gray-700">{stockPage}</span> de <span className="font-semibold text-gray-700">{totalPages}</span>
+                          </span>
+                          <button
+                            disabled={stockPage >= totalPages}
+                            onClick={() => setStockPage((p) => Math.min(totalPages, p + 1))}
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Siguiente
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })() : (
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-400">
+                      <span className="font-bold text-gray-600">{modalMeta?.total ?? ventasDetalle.length}</span>{' '}
+                      venta{(modalMeta?.total ?? ventasDetalle.length) !== 1 ? 's' : ''} encontrada{(modalMeta?.total ?? ventasDetalle.length) !== 1 ? 's' : ''}
+                    </p>
+                    {modalMeta && modalMeta.totalPages > 1 && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          disabled={modalPage <= 1}
+                          onClick={() => setModalPage((p) => Math.max(1, p - 1))}
+                          className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Anterior
+                        </button>
+                        <span className="text-xs text-gray-500">
+                          Página <span className="font-semibold text-gray-700">{modalPage}</span> de <span className="font-semibold text-gray-700">{modalMeta.totalPages}</span>
+                        </span>
+                        <button
+                          disabled={modalPage >= modalMeta.totalPages}
+                          onClick={() => setModalPage((p) => Math.min(modalMeta!.totalPages, p + 1))}
+                          className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Siguiente
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
