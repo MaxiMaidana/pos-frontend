@@ -16,9 +16,6 @@ interface RecargoEntry {
   porcentaje: number;
 }
 
-const formatPrecio = (valor: number) =>
-  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(valor);
-
 export default function PaymentConfig() {
   const [recargos, setRecargos] = useState<RecargoEntry[]>([]);
   const [loading, setLoading] = useState(true);
