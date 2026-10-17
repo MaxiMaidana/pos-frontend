@@ -110,6 +110,7 @@ export default function Caja() {
 
   const [seleccionada, setSeleccionada] = useState<Venta | null>(null);
   const [pagos, setPagos] = useState<LineaPago[]>([{ metodo: 'EFECTIVO', monto: '' }]);
+  const [facturar, setFacturar] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Sesión de caja
@@ -210,7 +211,10 @@ export default function Caja() {
   }, [sesion, fetchCajas]);
 
   // ── Helpers de líneas de pago ─────────────────────────────────────────────
-  const resetPagos = () => setPagos([{ metodo: 'EFECTIVO', monto: '' }]);
+  const resetPagos = () => {
+    setPagos([{ metodo: 'EFECTIVO', monto: '' }]);
+    setFacturar(false);
+  };
 
   const cambiarMetodo = (idx: number, metodo: MetodoPago) =>
     setPagos((prev) =>
@@ -280,6 +284,7 @@ export default function Caja() {
 
     const payload = {
       caja_id: sesion.caja_id,
+      facturar,
       pagos:
         pagos.length === 1
           ? [{ metodo: resolverMetodo(pagos[0]), monto: totalFinalCobro, cuotas: pagos[0].cuotas }]
@@ -1177,6 +1182,22 @@ export default function Caja() {
                           </span>
                         </div>
                       </div>
+
+                      {/* Checkbox facturar */}
+                      <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={facturar}
+                          onChange={(e) => setFacturar(e.target.checked)}
+                          className="w-4 h-4 rounded accent-indigo-600 cursor-pointer"
+                        />
+                        <span className="text-sm text-gray-600">
+                          Emitir factura ARCA
+                        </span>
+                        {facturar && (
+                          <span className="text-xs text-indigo-500 font-medium">· pendiente configuración</span>
+                        )}
+                      </label>
 
                       {/* Botón Cobrar */}
                       <button
