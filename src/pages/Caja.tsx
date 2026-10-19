@@ -23,6 +23,7 @@ import {
   DollarSign,
   Info,
   Banknote,
+  AlertTriangle,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -122,6 +123,16 @@ export default function Caja() {
   const [cajasDisponibles, setCajasDisponibles] = useState<CajaDisponible[]>([]);
   const [formApertura, setFormApertura] = useState({ cajero_nombre: '', monto_inicial: '', caja_id: '' });
   const [isAbriendo, setIsAbriendo] = useState(false);
+
+  // Conflicto: hay una sesión abierta que no es la del usuario actual
+  const [sesionConflicto, setSesionConflicto] = useState<{
+    sesion_id: string;
+    cajero_nombre: string;
+    fecha_apertura: string;
+    caja_id: string;
+    efectivo_esperado: number;
+  } | null>(null);
+  const [isResolviendoConflicto, setIsResolviendoConflicto] = useState(false);
 
   // ── Movimientos de caja ──────────────────────────────────────────────────
   const [modalMovimiento, setModalMovimiento] = useState(false);
@@ -372,29 +383,61 @@ export default function Caja() {
     } catch (err: any) {
       const msg: string = err?.response?.data?.error ?? '';
       if (msg.toLowerCase().includes('ya tiene una sesión abierta')) {
-        // La sesión ya existe — la recuperamos automáticamente
         try {
-          const { data: arqueo } = await api.get<{ sesion_id: string; cajero_nombre: string; caja: { id: string } }>(
-            `/caja/${formApertura.caja_id}/arqueo`
-          );
-          const sesionRecuperada: SesionCaja = {
-            abierta: true,
-            cajero: arqueo.cajero_nombre,
-            caja_id: arqueo.caja.id,
+          const { data: arqueo } = await api.get<{
+            sesion_id: string;
+            cajero_nombre: string;
+            fecha_apertura: string;
+            caja: { id: string };
+            efectivo_esperado_en_cajon: number;
+          }>(`/caja/${formApertura.caja_id}/arqueo`);
+          setSesionConflicto({
             sesion_id: arqueo.sesion_id,
-          };
-          localStorage.setItem('sesion_caja', JSON.stringify(sesionRecuperada));
-          setSesion(sesionRecuperada);
-          setFormApertura({ cajero_nombre: '', monto_inicial: '', caja_id: '' });
-          await fetchVentas();
+            cajero_nombre: arqueo.cajero_nombre,
+            fecha_apertura: arqueo.fecha_apertura,
+            caja_id: arqueo.caja.id,
+            efectivo_esperado: arqueo.efectivo_esperado_en_cajon,
+          });
         } catch {
-          alert('❌ La caja ya está abierta pero no se pudo recuperar la sesión. Verificá el servidor.');
+          alert('❌ La caja ya está abierta pero no se pudo obtener la información. Verificá el servidor.');
         }
       } else {
         alert('❌ Error al abrir la caja. Verificá el servidor.');
       }
     } finally {
       setIsAbriendo(false);
+    }
+  };
+
+  const continuarConSesionExistente = () => {
+    if (!sesionConflicto) return;
+    const sesionRecuperada: SesionCaja = {
+      abierta: true,
+      cajero: sesionConflicto.cajero_nombre,
+      caja_id: sesionConflicto.caja_id,
+      sesion_id: sesionConflicto.sesion_id,
+    };
+    localStorage.setItem('sesion_caja', JSON.stringify(sesionRecuperada));
+    setSesion(sesionRecuperada);
+    setSesionConflicto(null);
+    fetchVentas();
+  };
+
+  const cerrarSesionAnteriorYAbrir = async () => {
+    if (!sesionConflicto) return;
+    setIsResolviendoConflicto(true);
+    try {
+      // Cierre forzado usando el efectivo esperado como monto contado (diferencia = 0)
+      await api.post(`/caja/${sesionConflicto.caja_id}/cerrar`, {
+        monto_efectivo_contado: sesionConflicto.efectivo_esperado,
+      });
+      setSesionConflicto(null);
+      // Ahora abrimos la nueva sesión normalmente
+      await handleAbrirCaja();
+    } catch {
+      alert('❌ No se pudo cerrar la sesión anterior. Intentá de nuevo.');
+    } finally {
+      setIsResolviendoConflicto(false);
     }
   };
 
@@ -488,6 +531,59 @@ export default function Caja() {
   if (!sesion) {
     return (
       <>
+        {/* ── Modal de conflicto de sesión ────────────────────────────── */}
+        {sesionConflicto && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-amber-100 rounded-xl shrink-0">
+                  <AlertTriangle size={22} className="text-amber-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-black text-gray-800">Esta caja no se cerró correctamente</h2>
+                  <p className="text-sm text-gray-500 mt-1 leading-relaxed">
+                    Hay una sesión abierta de{' '}
+                    <span className="font-bold text-gray-700">{sesionConflicto.cajero_nombre}</span>
+                    {' '}desde el{' '}
+                    <span className="font-semibold text-gray-700">
+                      {new Date(sesionConflicto.fecha_apertura).toLocaleDateString('es-AR', {
+                        day: '2-digit', month: 'long', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </span>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 pt-2">
+                <button
+                  onClick={continuarConSesionExistente}
+                  className="w-full py-3 rounded-xl text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
+                >
+                  Continuar con la sesión de {sesionConflicto.cajero_nombre}
+                </button>
+                <button
+                  onClick={cerrarSesionAnteriorYAbrir}
+                  disabled={isResolviendoConflicto}
+                  className="w-full py-3 rounded-xl text-sm font-bold bg-amber-500 hover:bg-amber-600 text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isResolviendoConflicto ? (
+                    <><Loader2 size={15} className="animate-spin" /> Cerrando sesión anterior...</>
+                  ) : (
+                    'Cerrar esa sesión y abrir una nueva'
+                  )}
+                </button>
+                <button
+                  onClick={() => setSesionConflicto(null)}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Bloque móvil ────────────────────────────────────────────── */}
         <div className="flex md:hidden flex-col items-center justify-center h-full bg-gray-50 text-center p-8 gap-5">
           <div className="p-5 bg-red-50 rounded-full">
