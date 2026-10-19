@@ -111,6 +111,10 @@ export default function Caja() {
   const [seleccionada, setSeleccionada] = useState<Venta | null>(null);
   const [pagos, setPagos] = useState<LineaPago[]>([{ metodo: 'EFECTIVO', monto: '' }]);
   const [facturar, setFacturar] = useState(false);
+  const [condicionFiscal, setCondicionFiscal] = useState<'MONOTRIBUTO' | 'RESPONSABLE_INSCRIPTO'>('MONOTRIBUTO');
+  const [esConsumidorFinal, setEsConsumidorFinal] = useState<boolean | null>(null);
+  const [tipoFactura, setTipoFactura] = useState<'A' | 'B' | 'C' | null>(null);
+  const [compradorCuit, setCompradorCuit] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Sesión de caja
@@ -142,7 +146,7 @@ export default function Caja() {
   const fetchConfig = useCallback(async () => {
     try {
       setIsLoadingConfig(true);
-      const { data } = await api.get<{ recargos_credito?: Record<string, number> }>('/config');
+      const { data } = await api.get<{ recargos_credito?: Record<string, number>; condicionFiscal?: 'MONOTRIBUTO' | 'RESPONSABLE_INSCRIPTO' }>('/config');
       const raw = data?.recargos_credito ?? {};
       const parsed: Record<number, number> = {};
       for (const [k, v] of Object.entries(raw)) {
@@ -150,6 +154,7 @@ export default function Caja() {
       }
       setRecargosCredito(parsed);
       setCuotasCredito(Object.keys(parsed).map(Number).sort((a, b) => a - b));
+      if (data?.condicionFiscal) setCondicionFiscal(data.condicionFiscal);
     } catch {
       // Keep previous values on error
     } finally {
@@ -214,6 +219,9 @@ export default function Caja() {
   const resetPagos = () => {
     setPagos([{ metodo: 'EFECTIVO', monto: '' }]);
     setFacturar(false);
+    setEsConsumidorFinal(null);
+    setTipoFactura(null);
+    setCompradorCuit('');
   };
 
   const cambiarMetodo = (idx: number, metodo: MetodoPago) =>
@@ -285,6 +293,8 @@ export default function Caja() {
     const payload = {
       caja_id: sesion.caja_id,
       facturar,
+      ...(facturar && tipoFactura && { tipoFactura }),
+      ...(facturar && compradorCuit && { compradorCuit }),
       pagos:
         pagos.length === 1
           ? [{ metodo: resolverMetodo(pagos[0]), monto: totalFinalCobro, cuotas: pagos[0].cuotas }]
@@ -1183,21 +1193,84 @@ export default function Caja() {
                         </div>
                       </div>
 
-                      {/* Checkbox facturar */}
-                      <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={facturar}
-                          onChange={(e) => setFacturar(e.target.checked)}
-                          className="w-4 h-4 rounded accent-indigo-600 cursor-pointer"
-                        />
-                        <span className="text-sm text-gray-600">
-                          Emitir factura ARCA
-                        </span>
+                      {/* Facturación ARCA */}
+                      <div className="flex flex-col gap-2">
+                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={facturar}
+                            onChange={(e) => {
+                              setFacturar(e.target.checked);
+                              if (!e.target.checked) {
+                                setEsConsumidorFinal(null);
+                                setTipoFactura(null);
+                                setCompradorCuit('');
+                              }
+                            }}
+                            className="w-4 h-4 rounded accent-indigo-600 cursor-pointer"
+                          />
+                          <span className="text-sm text-gray-600">Emitir factura ARCA</span>
+                        </label>
+
                         {facturar && (
-                          <span className="text-xs text-indigo-500 font-medium">· pendiente configuración</span>
+                          <div className="ml-6 flex flex-col gap-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                            <p className="text-xs font-medium text-indigo-700">¿Consumidor final?</p>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEsConsumidorFinal(true);
+                                  setCompradorCuit('');
+                                  setTipoFactura(condicionFiscal === 'MONOTRIBUTO' ? 'C' : 'B');
+                                }}
+                                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all ${esConsumidorFinal === true ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-indigo-600 border-indigo-300 hover:bg-indigo-50'}`}
+                              >
+                                Sí
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEsConsumidorFinal(false);
+                                  setTipoFactura(null);
+                                }}
+                                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all ${esConsumidorFinal === false ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-indigo-600 border-indigo-300 hover:bg-indigo-50'}`}
+                              >
+                                No
+                              </button>
+                            </div>
+
+                            {esConsumidorFinal === false && (
+                              <div className="flex flex-col gap-2">
+                                <input
+                                  type="text"
+                                  placeholder="CUIT del comprador"
+                                  value={compradorCuit}
+                                  onChange={(e) => setCompradorCuit(e.target.value)}
+                                  className="w-full px-3 py-1.5 text-xs border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                />
+                                <div className="flex gap-1">
+                                  {(['A', 'B', 'C'] as const).map((t) => (
+                                    <button
+                                      key={t}
+                                      type="button"
+                                      onClick={() => setTipoFactura(t)}
+                                      className={`flex-1 py-1 rounded text-xs font-bold border transition-all ${tipoFactura === t ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-indigo-500 border-indigo-200 hover:bg-indigo-50'}`}
+                                    >
+                                      Fc. {t}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {tipoFactura && (
+                              <p className="text-xs text-indigo-600 font-medium">
+                                → Factura {tipoFactura}{esConsumidorFinal ? ' · Consumidor final' : compradorCuit ? ` · CUIT ${compradorCuit}` : ''}
+                              </p>
+                            )}
+                          </div>
                         )}
-                      </label>
+                      </div>
 
                       {/* Botón Cobrar */}
                       <button
