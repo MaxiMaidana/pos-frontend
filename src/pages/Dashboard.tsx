@@ -140,6 +140,7 @@ interface Tienda {
   id: string;
   nombre?: string;
   nombre_tienda?: string;
+  facturacionHabilitada?: boolean;
 }
 
 interface IdentidadConfig {
@@ -206,7 +207,6 @@ function SkeletonTable({ rows = 4 }: { rows?: number }) {
 
 export default function Dashboard() {
   const [fecha, setFecha] = useState<string>(hoy);
-  const [facturacionHabilitada, setFacturacionHabilitada] = useState<boolean>(false);
   const [isTogglingFacturacion, setIsTogglingFacturacion] = useState(false);
   const [tiendas, setTiendas] = useState<Tienda[]>([]);
   const [tiendaSeleccionada, setTiendaSeleccionada] = useState<string>('');
@@ -291,10 +291,6 @@ export default function Dashboard() {
 
     fetchTiendas();
 
-    // Cargar estado inicial de facturacionHabilitada
-    api.get<{ facturacionHabilitada?: boolean }>('/config')
-      .then(({ data }) => { if (!cancelled) setFacturacionHabilitada(data?.facturacionHabilitada ?? false); })
-      .catch(() => {});
 
     return () => { cancelled = true; };
   }, []);
@@ -972,47 +968,58 @@ export default function Dashboard() {
         <PaymentConfig />
 
         {/* ── Facturación ARCA ────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-indigo-50 rounded-xl">
-                <Receipt size={18} className="text-indigo-600" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-gray-800">Facturación electrónica ARCA</h3>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {facturacionHabilitada
-                    ? 'Los cajeros pueden emitir facturas al cobrar.'
-                    : 'El checkbox de facturar está oculto en la caja.'}
-                </p>
+        {(() => {
+          const tiendaActual = tiendas.find((t) => t.id === tiendaSeleccionada);
+          const facturacionHabilitada = tiendaActual?.facturacionHabilitada ?? false;
+          return (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-indigo-50 rounded-xl">
+                    <Receipt size={18} className="text-indigo-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-800">Facturación electrónica ARCA</h3>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {!tiendaSeleccionada
+                        ? 'Seleccioná una sucursal para configurarlo.'
+                        : facturacionHabilitada
+                          ? 'Los cajeros pueden emitir facturas al cobrar.'
+                          : 'El checkbox de facturar está oculto en la caja.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    if (!tiendaSeleccionada) return;
+                    setIsTogglingFacturacion(true);
+                    try {
+                      const nuevoValor = !facturacionHabilitada;
+                      await api.put(`/tiendas/${tiendaSeleccionada}/facturacion`, { habilitada: nuevoValor });
+                      setTiendas((prev) =>
+                        prev.map((t) => t.id === tiendaSeleccionada ? { ...t, facturacionHabilitada: nuevoValor } : t)
+                      );
+                    } catch {
+                      alert('❌ No se pudo actualizar la configuración.');
+                    } finally {
+                      setIsTogglingFacturacion(false);
+                    }
+                  }}
+                  disabled={isTogglingFacturacion || !tiendaSeleccionada}
+                  className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${
+                    facturacionHabilitada ? 'bg-indigo-600' : 'bg-gray-200'
+                  } ${(isTogglingFacturacion || !tiendaSeleccionada) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
+                      facturacionHabilitada ? 'translate-x-6' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
               </div>
             </div>
-            <button
-              onClick={async () => {
-                setIsTogglingFacturacion(true);
-                try {
-                  const nuevoValor = !facturacionHabilitada;
-                  await api.put('/config', { facturacionHabilitada: nuevoValor });
-                  setFacturacionHabilitada(nuevoValor);
-                } catch {
-                  alert('❌ No se pudo actualizar la configuración.');
-                } finally {
-                  setIsTogglingFacturacion(false);
-                }
-              }}
-              disabled={isTogglingFacturacion}
-              className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${
-                facturacionHabilitada ? 'bg-indigo-600' : 'bg-gray-200'
-              } ${isTogglingFacturacion ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
-                  facturacionHabilitada ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
+          );
+        })()}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
