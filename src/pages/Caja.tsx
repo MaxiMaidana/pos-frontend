@@ -369,8 +369,30 @@ export default function Caja() {
       setSesion(nuevaSesion);
       setFormApertura({ cajero_nombre: '', monto_inicial: '', caja_id: '' });
       await fetchVentas();
-    } catch {
-      alert('❌ Error al abrir la caja. Verificá el servidor.');
+    } catch (err: any) {
+      const msg: string = err?.response?.data?.error ?? '';
+      if (msg.toLowerCase().includes('ya tiene una sesión abierta')) {
+        // La sesión ya existe — la recuperamos automáticamente
+        try {
+          const { data: arqueo } = await api.get<{ sesion_id: string; cajero_nombre: string; caja: { id: string } }>(
+            `/caja/${formApertura.caja_id}/arqueo`
+          );
+          const sesionRecuperada: SesionCaja = {
+            abierta: true,
+            cajero: arqueo.cajero_nombre,
+            caja_id: arqueo.caja.id,
+            sesion_id: arqueo.sesion_id,
+          };
+          localStorage.setItem('sesion_caja', JSON.stringify(sesionRecuperada));
+          setSesion(sesionRecuperada);
+          setFormApertura({ cajero_nombre: '', monto_inicial: '', caja_id: '' });
+          await fetchVentas();
+        } catch {
+          alert('❌ La caja ya está abierta pero no se pudo recuperar la sesión. Verificá el servidor.');
+        }
+      } else {
+        alert('❌ Error al abrir la caja. Verificá el servidor.');
+      }
     } finally {
       setIsAbriendo(false);
     }
