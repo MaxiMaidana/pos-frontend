@@ -311,7 +311,11 @@ export default function Caja() {
     try {
       setIsSubmitting(true);
       await api.post(`/ventas/${seleccionada.id}/cobrar`, payload);
-      alert('¡Cobro registrado con éxito!');
+      if (facturar && tipoFactura) {
+        alert('✅ Cobro registrado. La factura ARCA se está procesando — si falla la encontrás en el historial para reintentar.');
+      } else {
+        alert('¡Cobro registrado con éxito!');
+      }
       setSeleccionada(null);
       resetPagos();
       await fetchVentas();

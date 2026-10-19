@@ -13,6 +13,10 @@ import {
   XCircle,
   ShoppingBag,
   CreditCard,
+  AlertCircle,
+  FileCheck,
+  Clock,
+  RefreshCw,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -29,6 +33,8 @@ interface PagoVenta {
   monto: number;
 }
 
+type EstadoFacturacion = 'NO_APLICA' | 'PENDIENTE' | 'EMITIDA' | 'ERROR';
+
 interface Venta {
   id: string;
   created_at: string;
@@ -37,6 +43,11 @@ interface Venta {
   total: number;
   detalles: DetalleVenta[];
   pagos: PagoVenta[];
+  estadoFacturacion?: EstadoFacturacion;
+  tipoFactura?: 'A' | 'B' | 'C';
+  cae?: string;
+  vencimientoCae?: string;
+  errorFacturacion?: string;
 }
 
 interface MetaPaginacion {
@@ -126,7 +137,40 @@ export default function HistorialVentas() {
 
   useEffect(() => { fetchVentas(); }, [fetchVentas]);
 
-  const cerrarDetalle = () => setVentaDetalle(null);
+  const cerrarDetalle = () => {
+    setVentaDetalle(null);
+    setRetryTipo(null);
+    setRetryCuit('');
+    setRetryEsConsumidorFinal(null);
+  };
+
+  // ── Reintentar factura ARCA ────────────────────────────────────────────
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryTipo, setRetryTipo] = useState<'A' | 'B' | 'C' | null>(null);
+  const [retryCuit, setRetryCuit] = useState('');
+  const [retryEsConsumidorFinal, setRetryEsConsumidorFinal] = useState<boolean | null>(null);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const [retryOk, setRetryOk] = useState(false);
+
+  const handleRetryFactura = async () => {
+    if (!ventaDetalle || !retryTipo) return;
+    setIsRetrying(true);
+    setRetryError(null);
+    setRetryOk(false);
+    try {
+      const { data } = await api.post(`/ventas/${ventaDetalle.id}/facturar`, {
+        tipoFactura: retryTipo,
+        ...(retryCuit && { compradorCuit: retryCuit }),
+      });
+      setVentaDetalle({ ...ventaDetalle, ...data });
+      setVentas((prev) => prev.map((v) => (v.id === data.id ? { ...v, ...data } : v)));
+      setRetryOk(true);
+    } catch (err: any) {
+      setRetryError(err?.response?.data?.error ?? 'Error al conectar con ARCA');
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -252,17 +296,37 @@ export default function HistorialVentas() {
                         </td>
 
                         <td className="px-4 py-4 text-center whitespace-nowrap">
-                          {venta.estado === 'PAGADA' ? (
-                            <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <CheckCircle size={11} />
-                              Pagada
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-red-50 text-red-500 border border-red-200">
-                              <XCircle size={11} />
-                              Anulada
-                            </span>
-                          )}
+                          <div className="flex flex-col items-center gap-1">
+                            {venta.estado === 'PAGADA' ? (
+                              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle size={11} />
+                                Pagada
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-red-50 text-red-500 border border-red-200">
+                                <XCircle size={11} />
+                                Anulada
+                              </span>
+                            )}
+                            {venta.estadoFacturacion === 'EMITIDA' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">
+                                <FileCheck size={9} />
+                                Fc.{venta.tipoFactura} ARCA
+                              </span>
+                            )}
+                            {venta.estadoFacturacion === 'PENDIENTE' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-100">
+                                <Clock size={9} />
+                                ARCA pend.
+                              </span>
+                            )}
+                            {venta.estadoFacturacion === 'ERROR' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-500 border border-red-100">
+                                <AlertCircle size={9} />
+                                ARCA error
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {!esEmpleado && (
@@ -444,6 +508,64 @@ export default function HistorialVentas() {
                   </p>
                 </div>
               </div>
+              {/* ARCA status */}
+              {ventaDetalle.estadoFacturacion === 'EMITIDA' && (
+                <div className="mb-3 p-3 bg-blue-50 rounded-xl border border-blue-100 text-xs text-blue-700">
+                  <p className="font-bold mb-0.5">✅ Factura {ventaDetalle.tipoFactura} emitida</p>
+                  <p>CAE: <span className="font-mono">{ventaDetalle.cae}</span></p>
+                  {ventaDetalle.vencimientoCae && <p>Vencimiento: {ventaDetalle.vencimientoCae}</p>}
+                </div>
+              )}
+
+              {(ventaDetalle.estadoFacturacion === 'PENDIENTE' || ventaDetalle.estadoFacturacion === 'ERROR') && ventaDetalle.estado === 'PAGADA' && (
+                <div className="mb-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                  <p className="text-xs font-bold text-amber-700 mb-1">
+                    {ventaDetalle.estadoFacturacion === 'ERROR' ? '⚠️ Falló la factura ARCA' : '⏳ Factura ARCA pendiente'}
+                  </p>
+                  {ventaDetalle.errorFacturacion && (
+                    <p className="text-[10px] text-amber-600 mb-2 font-mono">{ventaDetalle.errorFacturacion}</p>
+                  )}
+                  {retryOk ? (
+                    <p className="text-xs text-emerald-600 font-semibold">✅ Factura emitida correctamente</p>
+                  ) : (
+                    <>
+                      <p className="text-[11px] text-amber-600 mb-2">Seleccioná tipo y reintentar:</p>
+                      <div className="flex gap-2 mb-2">
+                        <button type="button" onClick={() => { setRetryEsConsumidorFinal(true); setRetryTipo('C'); setRetryCuit(''); }}
+                          className={`flex-1 py-1 rounded text-xs font-semibold border transition-all ${retryEsConsumidorFinal === true ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-amber-600 border-amber-300'}`}>
+                          Consumidor final
+                        </button>
+                        <button type="button" onClick={() => { setRetryEsConsumidorFinal(false); setRetryTipo(null); }}
+                          className={`flex-1 py-1 rounded text-xs font-semibold border transition-all ${retryEsConsumidorFinal === false ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-amber-600 border-amber-300'}`}>
+                          Con CUIT
+                        </button>
+                      </div>
+                      {retryEsConsumidorFinal === false && (
+                        <div className="flex flex-col gap-1.5 mb-2">
+                          <input type="text" placeholder="CUIT del comprador" value={retryCuit}
+                            onChange={(e) => setRetryCuit(e.target.value)}
+                            className="w-full px-2 py-1 text-xs border border-amber-200 rounded focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                          <div className="flex gap-1">
+                            {(['A', 'B', 'C'] as const).map((t) => (
+                              <button key={t} type="button" onClick={() => setRetryTipo(t)}
+                                className={`flex-1 py-1 rounded text-xs font-bold border transition-all ${retryTipo === t ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-amber-500 border-amber-200'}`}>
+                                Fc. {t}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {retryError && <p className="text-[10px] text-red-500 mb-1">{retryError}</p>}
+                      <button onClick={handleRetryFactura} disabled={isRetrying || !retryTipo}
+                        className="w-full py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 transition-colors">
+                        {isRetrying ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                        {isRetrying ? 'Facturando...' : 'Emitir factura ahora'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
               <button
                 onClick={cerrarDetalle}
                 className="w-full py-2.5 rounded-xl text-sm font-semibold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
