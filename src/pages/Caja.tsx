@@ -113,6 +113,7 @@ export default function Caja() {
   const [pagos, setPagos] = useState<LineaPago[]>([{ metodo: 'EFECTIVO', monto: '' }]);
   const [facturar, setFacturar] = useState(false);
   const [condicionFiscal, setCondicionFiscal] = useState<'MONOTRIBUTO' | 'RESPONSABLE_INSCRIPTO'>('MONOTRIBUTO');
+  const [facturacionHabilitada, setFacturacionHabilitada] = useState(false);
   const [esConsumidorFinal, setEsConsumidorFinal] = useState<boolean | null>(null);
   const [tipoFactura, setTipoFactura] = useState<'A' | 'B' | 'C' | null>(null);
   const [compradorCuit, setCompradorCuit] = useState('');
@@ -157,7 +158,7 @@ export default function Caja() {
   const fetchConfig = useCallback(async () => {
     try {
       setIsLoadingConfig(true);
-      const { data } = await api.get<{ recargos_credito?: Record<string, number>; condicionFiscal?: 'MONOTRIBUTO' | 'RESPONSABLE_INSCRIPTO' }>('/config');
+      const { data } = await api.get<{ recargos_credito?: Record<string, number>; condicionFiscal?: 'MONOTRIBUTO' | 'RESPONSABLE_INSCRIPTO'; facturacionHabilitada?: boolean }>('/config');
       const raw = data?.recargos_credito ?? {};
       const parsed: Record<number, number> = {};
       for (const [k, v] of Object.entries(raw)) {
@@ -166,6 +167,7 @@ export default function Caja() {
       setRecargosCredito(parsed);
       setCuotasCredito(Object.keys(parsed).map(Number).sort((a, b) => a - b));
       if (data?.condicionFiscal) setCondicionFiscal(data.condicionFiscal);
+      setFacturacionHabilitada(data?.facturacionHabilitada ?? false);
     } catch {
       // Keep previous values on error
     } finally {
@@ -1315,8 +1317,8 @@ export default function Caja() {
                         </div>
                       </div>
 
-                      {/* Facturación ARCA */}
-                      <div className="flex flex-col gap-2">
+                      {/* Facturación ARCA — solo visible si el admin la habilitó */}
+                      <div className="flex flex-col gap-2" style={{ display: facturacionHabilitada ? undefined : 'none' }}>
                         <label className="flex items-center gap-2.5 cursor-pointer select-none">
                           <input
                             type="checkbox"
