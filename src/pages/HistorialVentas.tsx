@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import api from '../api/axiosClient';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -143,6 +144,37 @@ export default function HistorialVentas() {
 
   useEffect(() => { fetchVentas(); }, [fetchVentas]);
 
+  // ── Facturar pendientes (masivo) ───────────────────────────────────────
+  const [isFacturandoPendientes, setIsFacturandoPendientes] = useState(false);
+  const hayErroresArca = ventas.some((v) => v.estadoFacturacion === 'ERROR');
+
+  const handleFacturarPendientes = async () => {
+    const confirmar = window.confirm(
+      `¿Reintentar facturar todas las ventas con error ARCA del ${fecha.split('-').reverse().join('/')}? Cada una se factura con el CUIT/tipo que se usó al cobrarla (o Consumidor Final si no tenía).`
+    );
+    if (!confirmar) return;
+
+    setIsFacturandoPendientes(true);
+    try {
+      const { data } = await api.post<{ total: number; emitidas: number; fallidas: number }>(
+        '/ventas/facturar-pendientes',
+        { fecha }
+      );
+      if (data.total === 0) {
+        toast.success('No había facturas pendientes de reintentar para esta fecha.');
+      } else if (data.fallidas === 0) {
+        toast.success(`¡Listo! Se facturaron las ${data.emitidas} ventas pendientes.`);
+      } else {
+        toast.error(`${data.emitidas} facturadas, ${data.fallidas} siguen con error. Podés reintentarlas individualmente.`);
+      }
+      await fetchVentas();
+    } catch {
+      toast.error('Error al facturar las ventas pendientes. Intentá de nuevo.');
+    } finally {
+      setIsFacturandoPendientes(false);
+    }
+  };
+
   const cerrarDetalle = () => {
     setVentaDetalle(null);
     setRetryTipo(null);
@@ -198,6 +230,18 @@ export default function HistorialVentas() {
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
+            {hayErroresArca && (
+              <button
+                onClick={handleFacturarPendientes}
+                disabled={isFacturandoPendientes}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors"
+              >
+                {isFacturandoPendientes
+                  ? <><Loader2 size={14} className="animate-spin" /> Facturando...</>
+                  : <><RefreshCw size={14} /> Facturar pendientes</>
+                }
+              </button>
+            )}
             <input
               type="date"
               value={fecha}
