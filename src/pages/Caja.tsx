@@ -1683,10 +1683,6 @@ export default function Caja() {
                         <span className="text-gray-500">Efectivo inicial</span>
                         <span className="font-semibold text-gray-700">{formatPrecio(monto_inicial)}</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Ventas en efectivo</span>
-                        <span className="font-semibold text-emerald-600">+{formatPrecio(ventas_efectivo)}</span>
-                      </div>
                       {arqueo.ventas_por_metodo
                         ?.filter(p => p.metodo !== 'EFECTIVO')
                         .map(({ metodo, total }) => {
@@ -1698,6 +1694,10 @@ export default function Caja() {
                             </div>
                           );
                         })}
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Ventas en efectivo</span>
+                        <span className="font-semibold text-emerald-600">+{formatPrecio(ventas_efectivo)}</span>
+                      </div>
                       {total_ingresos > 0 && (
                         <div className="flex justify-between">
                           <span className="text-gray-500">Ingresos manuales</span>
