@@ -1082,9 +1082,9 @@ export default function Caja() {
               <div className="shrink-0 p-6 border-t border-gray-100 bg-gray-50 space-y-4">
 
                 {/* Descuento + Total */}
-                <div className="space-y-1.5">
+                <div className="max-w-sm mx-auto w-full bg-white rounded-xl border border-gray-200 p-4 space-y-1.5">
                   {seleccionada.descuento_total > 0 && (
-                    <div className="flex justify-between text-sm">
+                    <div className="flex items-center justify-center gap-3 text-sm">
                       <span className="text-gray-500">Descuento</span>
                       <span className="text-emerald-600 font-semibold">
                         -{formatPrecio(seleccionada.descuento_total)}
@@ -1092,13 +1092,13 @@ export default function Caja() {
                     </div>
                   )}
                   {hayRecargo && (
-                    <div className="flex justify-between text-sm">
+                    <div className="flex items-center justify-center gap-3 text-sm">
                       <span className="text-gray-500">Subtotal</span>
                       <span className="font-semibold text-gray-700">{formatPrecio(total)}</span>
                     </div>
                   )}
                   {hayRecargo && (
-                    <div className="flex justify-between text-sm">
+                    <div className="flex items-center justify-center gap-3 text-sm">
                       <span className="text-purple-600 font-semibold">
                         Recargo crédito
                       </span>
@@ -1107,7 +1107,7 @@ export default function Caja() {
                       </span>
                     </div>
                   )}
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-center gap-3">
                     <span className="text-base font-semibold text-gray-500">
                       {hayRecargo ? 'Total final' : 'Total a cobrar'}
                     </span>
