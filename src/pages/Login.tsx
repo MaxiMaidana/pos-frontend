@@ -59,11 +59,12 @@ export default function Login() {
         loginAdmin();
         navigate('/dashboard');
       } else {
-        loginEmpleado();
         try {
           const { data: cfg } = await api.get<{ modoCajaSimple?: boolean }>('/config');
+          loginEmpleado();
           navigate(cfg.modoCajaSimple ? '/caja' : '/');
         } catch {
+          loginEmpleado();
           navigate('/');
         }
       }
