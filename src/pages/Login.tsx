@@ -60,7 +60,12 @@ export default function Login() {
         navigate('/dashboard');
       } else {
         loginEmpleado();
-        navigate('/');
+        try {
+          const { data: cfg } = await api.get<{ modoCajaSimple?: boolean }>('/config');
+          navigate(cfg.modoCajaSimple ? '/caja' : '/');
+        } catch {
+          navigate('/');
+        }
       }
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } }).response?.status;

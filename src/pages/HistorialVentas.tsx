@@ -43,6 +43,8 @@ interface Venta {
   estado: 'PAGADA' | 'ANULADA' | 'PENDIENTE' | 'BORRADOR';
   vendedor_nombre?: string;
   vendedor?: { id: string; nombre: string };
+  sesion?: { cajero_nombre: string };
+  cliente_nombre?: string;
   total: number;
   detalles: DetalleVenta[];
   pagos: PagoVenta[];
@@ -284,7 +286,7 @@ export default function HistorialVentas() {
                         </td>
 
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-700 font-medium">{venta.vendedor?.nombre || venta.vendedor_nombre || '—'}</span>
+                          <span className="text-sm text-gray-700 font-medium">{venta.vendedor?.nombre || venta.sesion?.cajero_nombre || venta.vendedor_nombre || '—'}</span>
                         </td>
 
                         <td className="px-4 py-4 whitespace-nowrap">
@@ -315,6 +317,9 @@ export default function HistorialVentas() {
                                 <XCircle size={11} />
                                 Anulada
                               </span>
+                            )}
+                            {venta.cliente_nombre && (
+                              <span className="text-[10px] text-gray-400 font-medium">{venta.cliente_nombre}</span>
                             )}
                             {venta.estadoFacturacion === 'EMITIDA' && (
                               <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">
