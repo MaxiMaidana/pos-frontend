@@ -1687,6 +1687,17 @@ export default function Caja() {
                         <span className="text-gray-500">Ventas en efectivo</span>
                         <span className="font-semibold text-emerald-600">+{formatPrecio(ventas_efectivo)}</span>
                       </div>
+                      {arqueo.ventas_por_metodo
+                        ?.filter(p => p.metodo !== 'EFECTIVO')
+                        .map(({ metodo, total }) => {
+                          const label = metodo === 'TARJETA_DEBITO' ? 'Débito' : metodo === 'TARJETA_CREDITO' ? 'Crédito' : metodo === 'TRANSFERENCIA' ? 'Transferencia' : metodo === 'MERCADOPAGO' ? 'MercadoPago' : metodo;
+                          return (
+                            <div key={metodo} className="flex justify-between">
+                              <span className="text-gray-500">{label}</span>
+                              <span className="font-semibold text-gray-700">{formatPrecio(total)}</span>
+                            </div>
+                          );
+                        })}
                       {total_ingresos > 0 && (
                         <div className="flex justify-between">
                           <span className="text-gray-500">Ingresos manuales</span>
@@ -1705,24 +1716,6 @@ export default function Caja() {
                         <span className="text-indigo-700">{formatPrecio(totalEsperado)}</span>
                       </div>
                     </div>
-
-                    {/* Desglose por método de pago */}
-                    {arqueo.ventas_por_metodo && arqueo.ventas_por_metodo.filter(p => p.metodo !== 'EFECTIVO').length > 0 && (
-                      <div className="bg-gray-50 rounded-xl p-4 space-y-1.5 text-sm border border-gray-100">
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Otros métodos cobrados</p>
-                        {arqueo.ventas_por_metodo
-                          .filter(p => p.metodo !== 'EFECTIVO')
-                          .map(({ metodo, total }) => {
-                            const label = metodo === 'TARJETA_DEBITO' ? 'Débito' : metodo === 'TARJETA_CREDITO' ? 'Crédito' : metodo === 'TRANSFERENCIA' ? 'Transferencia' : metodo === 'MERCADOPAGO' ? 'MercadoPago' : metodo;
-                            return (
-                              <div key={metodo} className="flex justify-between">
-                                <span className="text-gray-500">{label}</span>
-                                <span className="font-semibold text-gray-700">{formatPrecio(total)}</span>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    )}
 
                     {/* Monto contado */}
                     <div>
