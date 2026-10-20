@@ -328,8 +328,6 @@ export default function Dashboard() {
         ]);
 
         if (!cancelled) {
-          console.log('Data Stats:', statsRes.data);
-          console.log('Data Analiticas:', analiticasRes.data);
           setStats(statsRes.data);
           setAnaliticas(analiticasRes.data);
         }

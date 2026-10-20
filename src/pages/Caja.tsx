@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { toast } from 'sonner';
 import api from '../api/axiosClient';
 import SyncButton from '../components/SyncButton';
 
@@ -380,16 +381,16 @@ export default function Caja() {
       await api.post(`/ventas/${seleccionada.id}/cobrar`, payload);
       if (compradorCuit) localStorage.setItem('pos_ultimo_cuit', compradorCuit);
       if (facturar && tipoFactura) {
-        alert('✅ Cobro registrado. La factura ARCA se está procesando — si falla la encontrás en el historial para reintentar.');
+        toast.success('Cobro registrado. La factura ARCA se está procesando — si falla la encontrás en el historial para reintentar.');
       } else {
-        alert('¡Cobro registrado con éxito!');
+        toast.success('¡Cobro registrado con éxito!');
       }
       const ventaId = seleccionada.id;
       setSeleccionada(null);
       resetPagos();
       setVentas((prev) => prev.filter((v) => v.id !== ventaId));
     } catch {
-      alert('❌ Error al registrar el cobro. Intentá de nuevo.');
+      toast.error('Error al registrar el cobro. Intentá de nuevo.');
     } finally {
       setIsSubmitting(false);
     }
@@ -407,13 +408,13 @@ export default function Caja() {
         estado: 'ANULADA',
         sesion_id: sesion?.sesion_id,
       });
-      alert('🗑️ Comanda anulada. El stock fue repuesto.');
+      toast.success('Comanda anulada. El stock fue repuesto.');
       const anulId = seleccionada.id;
       setSeleccionada(null);
       resetPagos();
       setVentas((prev) => prev.filter((v) => v.id !== anulId));
     } catch {
-      alert('❌ Error al anular la comanda. Intentá de nuevo.');
+      toast.error('Error al anular la comanda. Intentá de nuevo.');
     } finally {
       setIsSubmitting(false);
     }
@@ -457,10 +458,10 @@ export default function Caja() {
             efectivo_esperado: arqueo.efectivo_esperado_en_cajon,
           });
         } catch {
-          alert('❌ La caja ya está abierta pero no se pudo obtener la información. Verificá el servidor.');
+          toast.error('La caja ya está abierta pero no se pudo obtener la información. Verificá el servidor.');
         }
       } else {
-        alert('❌ Error al abrir la caja. Verificá el servidor.');
+        toast.error('Error al abrir la caja. Verificá el servidor.');
       }
     } finally {
       setIsAbriendo(false);
@@ -493,7 +494,7 @@ export default function Caja() {
       // Ahora abrimos la nueva sesión normalmente
       await handleAbrirCaja();
     } catch {
-      alert('❌ No se pudo cerrar la sesión anterior. Intentá de nuevo.');
+      toast.error('No se pudo cerrar la sesión anterior. Intentá de nuevo.');
     } finally {
       setIsResolviendoConflicto(false);
     }
@@ -505,11 +506,11 @@ export default function Caja() {
     if (!sesion) return;
     const monto = parseFloat(formMovimiento.monto);
     if (isNaN(monto) || monto <= 0) {
-      alert('Ingresá un monto válido mayor a cero.');
+      toast.error('Ingresá un monto válido mayor a cero.');
       return;
     }
     if (!formMovimiento.motivo.trim()) {
-      alert('Ingresá un motivo para el movimiento.');
+      toast.error('Ingresá un motivo para el movimiento.');
       return;
     }
     try {
@@ -522,9 +523,9 @@ export default function Caja() {
       });
       setModalMovimiento(false);
       setFormMovimiento({ tipo: 'RETIRO', monto: '', motivo: '' });
-      alert(`✅ ${formMovimiento.tipo === 'RETIRO' ? 'Retiro' : 'Ingreso'} registrado correctamente.`);
+      toast.success(`${formMovimiento.tipo === 'RETIRO' ? 'Retiro' : 'Ingreso'} registrado correctamente.`);
     } catch {
-      alert('❌ Error al registrar el movimiento. Intentá de nuevo.');
+      toast.error('Error al registrar el movimiento. Intentá de nuevo.');
     } finally {
       setIsMovimiento(false);
     }
@@ -536,7 +537,7 @@ export default function Caja() {
 
     // Modo simple: bloquear cierre si hay comandas pendientes de cobrar
     if (modoCajaSimple && ventas.length > 0) {
-      alert(`Tenés ${ventas.length} comanda${ventas.length !== 1 ? 's' : ''} pendiente${ventas.length !== 1 ? 's' : ''} de cobrar. Cobralas antes de cerrar el turno.`);
+      toast.error(`Tenés ${ventas.length} comanda${ventas.length !== 1 ? 's' : ''} pendiente${ventas.length !== 1 ? 's' : ''} de cobrar. Cobralas antes de cerrar el turno.`);
       return;
     }
 
@@ -557,7 +558,7 @@ export default function Caja() {
     if (!sesion) return;
     const monto_cierre = parseFloat(montoCierre);
     if (isNaN(monto_cierre) || monto_cierre < 0) {
-      alert('El monto ingresado no es válido. Usá solo números.');
+      toast.error('El monto ingresado no es válido. Usá solo números.');
       return;
     }
     try {
@@ -574,7 +575,7 @@ export default function Caja() {
       setArqueo(null);
     } catch (error) {
       if (axios.isAxiosError(error) && (error.response?.status === 400 || error.response?.status === 404)) {
-        alert('La sesión de caja ya no existe o fue cerrada en otro lado. Limpiando estado local...');
+        toast.error('La sesión de caja ya no existe o fue cerrada en otro lado. Limpiando estado local...');
         setModalCierre(false);
         localStorage.removeItem('sesion_caja');
         setSesion(null);
@@ -583,7 +584,7 @@ export default function Caja() {
         resetPagos();
         return;
       }
-      alert('❌ Error al cerrar el turno. Intentá de nuevo.');
+      toast.error('Error al cerrar el turno. Intentá de nuevo.');
     } finally {
       setIsSubmitting(false);
     }

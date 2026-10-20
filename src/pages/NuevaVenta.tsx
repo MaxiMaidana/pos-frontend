@@ -197,9 +197,9 @@ export default function NuevaVenta() {
       setMeta(data.meta);
     } catch (error: unknown) {
       if (error instanceof Error) {
-        alert('Error en el celu: ' + error.message);
+        toast.error('Error al cargar productos: ' + error.message);
       } else {
-        alert('Error en el celu: Error desconocido');
+        toast.error('Error al cargar productos: error desconocido');
       }
       setErrorCatalogo('No se pudieron cargar los productos. Verificá que el servidor esté corriendo.');
     } finally {
