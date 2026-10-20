@@ -26,11 +26,15 @@ export default function Login() {
   const { rol, loginAdmin, loginEmpleado } = useAuth();
   const navigate = useNavigate();
 
-  // Redirigir si ya está autenticado
+  // Redirigir si ya estaba autenticado al entrar a /login (solo al montar —
+  // si reacciona a cada cambio de `rol` compite con el navigate explícito
+  // de handleSubmit y puede ganarle, haciendo pasar al empleado por "/"
+  // antes de llegar a "/caja" en MODO_CAJA_SIMPLE).
   useEffect(() => {
     if (rol === 'ADMIN') navigate('/dashboard', { replace: true });
     if (rol === 'EMPLEADO') navigate('/', { replace: true });
-  }, [rol, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const nombreTienda = useNombreTienda();
 
