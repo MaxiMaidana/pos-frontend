@@ -83,6 +83,10 @@ export default function NuevaVenta() {
     () => localStorage.getItem('pos_stock_negativo') === 'true'
   );
 
+  // Modo Caja Simple
+  const [modoCajaSimple, setModoCajaSimple] = useState(false);
+  const [cajeroNombre, setCajeroNombre] = useState('');
+
   // Vendedores & Venta Borrador
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [selectedVendedorId, setSelectedVendedorId] = useState('');
@@ -110,8 +114,27 @@ export default function NuevaVenta() {
     ventaIdRef.current = ventaId;
   }, [ventaId]);
 
-  // ── Fetch vendedores on mount ─────────────────────────────────────────
+  // ── Leer config y, si es modo simple, tomar cajero de la sesión de caja ──
   useEffect(() => {
+    api.get<{ modoCajaSimple?: boolean }>('/config')
+      .then(({ data }) => {
+        if (data.modoCajaSimple) {
+          setModoCajaSimple(true);
+          try {
+            const sesionRaw = localStorage.getItem('sesion_caja');
+            if (sesionRaw) {
+              const sesion = JSON.parse(sesionRaw);
+              setCajeroNombre(sesion.cajero ?? '');
+            }
+          } catch {}
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // ── Fetch vendedores on mount (solo modo normal) ───────────────────────
+  useEffect(() => {
+    if (modoCajaSimple) return;
     api.get('/vendedores')
       .then(({ data }) => {
         console.log('Vendedores recibidos:', data);
@@ -122,7 +145,7 @@ export default function NuevaVenta() {
         console.error('Error al cargar vendedores:', err);
         toast.error('No se pudieron cargar los vendedores');
       });
-  }, []);
+  }, [modoCajaSimple]);
 
   // ── Fetch productos ──────────────────────────────────────────────────────
   const fetchProductos = useCallback(async () => {
@@ -165,11 +188,13 @@ export default function NuevaVenta() {
     localStorage.setItem('pos_stock_negativo', String(permitirStockNegativo));
   }, [permitirStockNegativo]);
 
-  // ── Fetch venta borrador al cambiar vendedor ──────────────────────────────
+  // ── Fetch venta borrador al cambiar vendedor (solo modo normal) ──────────
   useEffect(() => {
-    if (!selectedVendedorId) {
-      setCarrito([]);
-      setVentaId(null);
+    if (!selectedVendedorId || modoCajaSimple) {
+      if (!modoCajaSimple) {
+        setCarrito([]);
+        setVentaId(null);
+      }
       return;
     }
 
@@ -208,7 +233,7 @@ export default function NuevaVenta() {
       });
 
     return () => { cancelled = true; };
-  }, [selectedVendedorId]);
+  }, [selectedVendedorId, modoCajaSimple]);
 
   // ── Total ────────────────────────────────────────────────────────────────
   const total = useMemo(
@@ -218,7 +243,7 @@ export default function NuevaVenta() {
 
   // ── Sync carrito con backend ─────────────────────────────────────────────
   const syncCarrito = useCallback(async (items: ItemCarrito[]) => {
-    if (!selectedVendedorId) return;
+    if (!selectedVendedorId && !modoCajaSimple) return;
 
     const detalles = items.map((item) => ({
       producto_id: item.producto_id,
@@ -230,7 +255,8 @@ export default function NuevaVenta() {
       setIsSyncing(true);
       if (!ventaIdRef.current) {
         const { data } = await api.post('/ventas/borrador', {
-          vendedorId: selectedVendedorId,
+          ...(selectedVendedorId && { vendedorId: selectedVendedorId }),
+          // shortcut: sesion_id no se pasa; POST /ventas/borrador no lo acepta aún
           detalles,
         });
         const newId = data.id ?? data.data?.id;
@@ -243,11 +269,11 @@ export default function NuevaVenta() {
     } finally {
       setIsSyncing(false);
     }
-  }, [selectedVendedorId]);
+  }, [selectedVendedorId, modoCajaSimple]);
 
   // ── Acciones del carrito ─────────────────────────────────────────────────
   const agregarAlCarrito = (producto: Producto) => {
-    if (!selectedVendedorId) {
+    if (!selectedVendedorId && !modoCajaSimple) {
       toast.error('Seleccioná un vendedor primero');
       return;
     }
@@ -366,7 +392,7 @@ export default function NuevaVenta() {
 
   // ── Confirmar Comanda ────────────────────────────────────────────────────
   const handleAbrirConfirmar = () => {
-    if (!selectedVendedorId) {
+    if (!selectedVendedorId && !modoCajaSimple) {
       toast.error('Seleccioná un vendedor antes de continuar.');
       return;
     }
@@ -525,7 +551,7 @@ export default function NuevaVenta() {
               {productos.map((producto) => {
                 const enCarrito = cantidadEnCarrito(producto.id);
                 const sinStock = producto.stock_local <= 0;
-                const bloqueada = !selectedVendedorId || isLoadingVenta || (!permitirStockNegativo && sinStock);
+                const bloqueada = (!selectedVendedorId && !modoCajaSimple) || isLoadingVenta || (!permitirStockNegativo && sinStock);
                 return (
                   <button
                     key={producto.id}
@@ -681,24 +707,31 @@ export default function NuevaVenta() {
             </button>
           </div>
 
-          {/* ── Dropdown de Vendedor ─────────────────────────────────────── */}
-          <div className="relative">
-            <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400 pointer-events-none z-10" />
-            <select
-              value={selectedVendedorId}
-              onChange={(e) => setSelectedVendedorId(e.target.value)}
-              className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-sm font-semibold text-gray-700 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition cursor-pointer"
-            >
-              <option value="">Seleccionar Vendedor</option>
-              {vendedores.map((v) => (
-                <option key={v.id} value={v.id}>{v.nombre}</option>
-              ))}
-            </select>
-            <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-indigo-400 pointer-events-none" />
-          </div>
+          {/* ── Dropdown de Vendedor / Info cajero (modo simple) ─────────── */}
+          {modoCajaSimple ? (
+            <div className="flex items-center gap-2 py-2.5 px-3 rounded-xl border border-indigo-200 bg-indigo-50">
+              <User size={15} className="text-indigo-400 shrink-0" />
+              <span className="text-sm font-semibold text-gray-700">{cajeroNombre || 'Cajero'}</span>
+            </div>
+          ) : (
+            <div className="relative">
+              <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400 pointer-events-none z-10" />
+              <select
+                value={selectedVendedorId}
+                onChange={(e) => setSelectedVendedorId(e.target.value)}
+                className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-sm font-semibold text-gray-700 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition cursor-pointer"
+              >
+                <option value="">Seleccionar Vendedor</option>
+                {vendedores.map((v) => (
+                  <option key={v.id} value={v.id}>{v.nombre}</option>
+                ))}
+              </select>
+              <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-indigo-400 pointer-events-none" />
+            </div>
+          )}
 
           {/* Indicador de carga de borrador */}
-          {isLoadingVenta && (
+          {isLoadingVenta && !modoCajaSimple && (
             <div className="flex items-center gap-2 mt-2.5 text-indigo-500 text-xs font-medium">
               <Loader2 size={13} className="animate-spin" />
               Buscando comanda en borrador…
@@ -716,7 +749,7 @@ export default function NuevaVenta() {
 
         {/* Lista de ítems */}
         <div className="flex-1 overflow-y-auto">
-          {!selectedVendedorId ? (
+          {!selectedVendedorId && !modoCajaSimple ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-300 gap-3 p-6">
               <User size={52} strokeWidth={1.5} />
               <p className="text-sm font-medium text-gray-400 text-center">
@@ -796,10 +829,10 @@ export default function NuevaVenta() {
 
           <button
             onClick={handleAbrirConfirmar}
-            disabled={isSubmitting || carrito.length === 0 || !selectedVendedorId || isLoadingVenta}
+            disabled={isSubmitting || carrito.length === 0 || (!selectedVendedorId && !modoCajaSimple) || isLoadingVenta}
             className={`
               w-full py-4 rounded-xl text-base font-bold flex items-center justify-center gap-2.5 transition-all duration-200
-              ${isSubmitting || carrito.length === 0 || !selectedVendedorId || isLoadingVenta
+              ${isSubmitting || carrito.length === 0 || (!selectedVendedorId && !modoCajaSimple) || isLoadingVenta
                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                 : 'bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-lg shadow-indigo-200 hover:shadow-indigo-300'
               }
@@ -809,9 +842,9 @@ export default function NuevaVenta() {
             Confirmar Comanda
           </button>
 
-          {(carrito.length === 0 || !selectedVendedorId) && !isSubmitting && (
+          {(carrito.length === 0 || (!selectedVendedorId && !modoCajaSimple)) && !isSubmitting && (
             <p className="text-xs text-center text-gray-400 mt-2">
-              {!selectedVendedorId
+              {!selectedVendedorId && !modoCajaSimple
                 ? 'Seleccioná un vendedor para comenzar a vender'
                 : 'Agregá al menos un producto al carrito'}
             </p>
@@ -850,7 +883,7 @@ export default function NuevaVenta() {
                   <span className="text-lg font-black text-gray-900">{formatPrecio(total)}</span>
                 </div>
                 <p className="text-xs text-gray-400">
-                  {carrito.reduce((acc, i) => acc + i.cantidad, 0)} productos · Vendedor: {vendedores.find((v) => v.id === selectedVendedorId)?.nombre}
+                  {carrito.reduce((acc, i) => acc + i.cantidad, 0)} productos · {modoCajaSimple ? `Cajera: ${cajeroNombre}` : `Vendedor: ${vendedores.find((v) => v.id === selectedVendedorId)?.nombre}`}
                 </p>
               </div>
 

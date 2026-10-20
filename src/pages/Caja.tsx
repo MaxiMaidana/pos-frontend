@@ -155,10 +155,14 @@ export default function Caja() {
   const [cuotasCredito, setCuotasCredito] = useState<number[]>([]);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
 
+  // ── Modo Caja Simple ──────────────────────────────────────────────────────
+  const [modoCajaSimple, setModoCajaSimple] = useState(false);
+  const [cajaIdLocal, setCajaIdLocal] = useState<string | null>(null);
+
   const fetchConfig = useCallback(async () => {
     try {
       setIsLoadingConfig(true);
-      const { data } = await api.get<{ recargos_credito?: Record<string, number>; condicionFiscal?: 'MONOTRIBUTO' | 'RESPONSABLE_INSCRIPTO'; facturacionHabilitada?: boolean }>('/config');
+      const { data } = await api.get<{ recargos_credito?: Record<string, number>; condicionFiscal?: 'MONOTRIBUTO' | 'RESPONSABLE_INSCRIPTO'; facturacionHabilitada?: boolean; modoCajaSimple?: boolean; cajaId?: string | null }>('/config');
       const raw = data?.recargos_credito ?? {};
       const parsed: Record<number, number> = {};
       for (const [k, v] of Object.entries(raw)) {
@@ -168,6 +172,8 @@ export default function Caja() {
       setCuotasCredito(Object.keys(parsed).map(Number).sort((a, b) => a - b));
       if (data?.condicionFiscal) setCondicionFiscal(data.condicionFiscal);
       setFacturacionHabilitada(data?.facturacionHabilitada ?? false);
+      setModoCajaSimple(data?.modoCajaSimple ?? false);
+      setCajaIdLocal(data?.cajaId ?? null);
     } catch {
       // Keep previous values on error
     } finally {
@@ -184,16 +190,18 @@ export default function Caja() {
     try {
       setIsLoading(true);
       setErrorLista(null);
-      const { data } = await api.get<{ data: Venta[] }>(`/ventas`, {
-        params: { estado: 'PENDIENTE', limit: 200 },
-      });
+      const params: Record<string, unknown> = { estado: 'PENDIENTE', limit: 200 };
+      if (modoCajaSimple && sesion?.sesion_id) {
+        params.sesion_id = sesion.sesion_id;
+      }
+      const { data } = await api.get<{ data: Venta[] }>(`/ventas`, { params });
       setVentas((data.data ?? []).filter((v) => v.estado === 'PENDIENTE'));
     } catch {
       setErrorLista('No se pudieron cargar las comandas. Verificá que el servidor esté corriendo.');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [modoCajaSimple, sesion]);
 
   useEffect(() => {
     fetchVentas();
@@ -211,7 +219,7 @@ export default function Caja() {
     }
   }, []);
 
-  // ── Fetch cajas disponibles (solo cuando no hay sesión) ──────────────────
+  // ── Fetch cajas disponibles (solo cuando no hay sesión y no es modo simple) ──
   const fetchCajas = useCallback(async () => {
     try {
       const { data } = await api.get<CajaDisponible[]>(`/caja`);
@@ -225,8 +233,36 @@ export default function Caja() {
   }, []);
 
   useEffect(() => {
-    if (!sesion) fetchCajas();
-  }, [sesion, fetchCajas]);
+    if (!sesion && !modoCajaSimple) fetchCajas();
+  }, [sesion, modoCajaSimple, fetchCajas]);
+
+  // ── Modo simple: pre-setear caja_id del form cuando llega del config ─────
+  useEffect(() => {
+    if (cajaIdLocal) {
+      setFormApertura((prev) => ({ ...prev, caja_id: cajaIdLocal }));
+    }
+  }, [cajaIdLocal]);
+
+  // ── Modo simple: verificar sesión activa en el backend al cargar ──────────
+  useEffect(() => {
+    if (!modoCajaSimple || !cajaIdLocal || sesion) return;
+    api.get<{ sesion: { id: string; cajero_nombre: string; caja_id: string } | null }>(
+      `/sesiones/activa?caja_id=${cajaIdLocal}`
+    )
+      .then(({ data }) => {
+        if (data.sesion) {
+          const s: SesionCaja = {
+            abierta: true,
+            cajero: data.sesion.cajero_nombre,
+            caja_id: data.sesion.caja_id,
+            sesion_id: data.sesion.id,
+          };
+          localStorage.setItem('sesion_caja', JSON.stringify(s));
+          setSesion(s);
+        }
+      })
+      .catch(() => {}); // en caso de error, mostrar form de apertura
+  }, [modoCajaSimple, cajaIdLocal, sesion]);
 
   // ── Helpers de líneas de pago ─────────────────────────────────────────────
   const resetPagos = () => {
@@ -477,6 +513,13 @@ export default function Caja() {
   // ── Cerrar turno: obtiene arqueo y abre modal ──────────────────────────────────
   const handleAbrirCierre = async () => {
     if (!sesion) return;
+
+    // Modo simple: bloquear cierre si hay comandas pendientes de cobrar
+    if (modoCajaSimple && ventas.length > 0) {
+      alert(`Tenés ${ventas.length} comanda${ventas.length !== 1 ? 's' : ''} pendiente${ventas.length !== 1 ? 's' : ''} de cobrar. Cobralas antes de cerrar el turno.`);
+      return;
+    }
+
     setIsLoadingArqueo(true);
     try {
       const { data } = await api.get<Arqueo>(`/caja/${sesion.caja_id}/arqueo`);
@@ -618,25 +661,27 @@ export default function Caja() {
               onSubmit={(e) => { e.preventDefault(); handleAbrirCaja(); }}
               className="space-y-4"
             >
-              {/* Selector de caja */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                  Caja de trabajo
-                </label>
-                <div className="relative">
-                  <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  <select
-                    value={formApertura.caja_id}
-                    onChange={(e) => setFormApertura((prev) => ({ ...prev, caja_id: e.target.value }))}
-                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent appearance-none cursor-pointer transition"
-                  >
-                    {cajasDisponibles.length === 0 && <option value="">Cargando cajas...</option>}
-                    {cajasDisponibles.map((caja) => (
-                      <option key={caja.id} value={caja.id}>{caja.nombre}</option>
-                    ))}
-                  </select>
+              {/* Selector de caja — oculto en modo simple (caja pre-configurada) */}
+              {!modoCajaSimple && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                    Caja de trabajo
+                  </label>
+                  <div className="relative">
+                    <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <select
+                      value={formApertura.caja_id}
+                      onChange={(e) => setFormApertura((prev) => ({ ...prev, caja_id: e.target.value }))}
+                      className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent appearance-none cursor-pointer transition"
+                    >
+                      {cajasDisponibles.length === 0 && <option value="">Cargando cajas...</option>}
+                      {cajasDisponibles.map((caja) => (
+                        <option key={caja.id} value={caja.id}>{caja.nombre}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Nombre del cajero */}
               <div>
@@ -861,11 +906,11 @@ export default function Caja() {
                       <p className="text-xs font-mono font-bold text-gray-400 mb-1">
                         {shortId(venta.id)}
                       </p>
-                      {/* Vendedor */}
+                      {/* Vendedor / Cajero */}
                       <div className="flex items-center gap-1.5">
                         <User size={12} className={isActive ? 'text-indigo-500' : 'text-gray-400'} />
                         <p className={`text-sm font-semibold truncate ${isActive ? 'text-indigo-700' : 'text-gray-700'}`}>
-                          {venta.vendedor?.nombre || venta.vendedor_nombre}
+                          {modoCajaSimple ? (sesion?.cajero ?? 'Cajero') : (venta.vendedor?.nombre || venta.vendedor_nombre)}
                         </p>
                       </div>
                       {venta.cliente_nombre && (
@@ -938,7 +983,7 @@ export default function Caja() {
                       <div className="p-1.5 bg-indigo-100 rounded-full">
                         <User size={13} className="text-indigo-600" />
                       </div>
-                      <p className="text-lg font-bold text-gray-800">{seleccionada.vendedor?.nombre || seleccionada.vendedor_nombre}</p>
+                      <p className="text-lg font-bold text-gray-800">{modoCajaSimple ? (sesion?.cajero ?? 'Cajero') : (seleccionada.vendedor?.nombre || seleccionada.vendedor_nombre)}</p>
                     </div>
                     {seleccionada.cliente_nombre && (
                       <p className="text-sm text-gray-600 mt-1">Cliente: <span className="font-medium">{seleccionada.cliente_nombre}</span></p>
