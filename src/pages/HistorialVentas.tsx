@@ -22,9 +22,11 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DetalleVenta {
-  nombre: string;
+  nombre?: string;
+  producto?: { nombre: string };
   cantidad: number;
-  precio_unitario: number;
+  precio_unitario?: number;
+  precio_unitario_historico?: number;
   subtotal: number;
 }
 
@@ -38,8 +40,9 @@ type EstadoFacturacion = 'NO_APLICA' | 'PENDIENTE' | 'EMITIDA' | 'ERROR';
 interface Venta {
   id: string;
   created_at: string;
-  estado: 'PAGADA' | 'ANULADA';
-  vendedor_nombre: string;
+  estado: 'PAGADA' | 'ANULADA' | 'PENDIENTE' | 'BORRADOR';
+  vendedor_nombre?: string;
+  vendedor?: { id: string; nombre: string };
   total: number;
   detalles: DetalleVenta[];
   pagos: PagoVenta[];
@@ -281,7 +284,7 @@ export default function HistorialVentas() {
                         </td>
 
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-700 font-medium">{venta.vendedor_nombre || '—'}</span>
+                          <span className="text-sm text-gray-700 font-medium">{venta.vendedor?.nombre || venta.vendedor_nombre || '—'}</span>
                         </td>
 
                         <td className="px-4 py-4 whitespace-nowrap">
@@ -301,6 +304,11 @@ export default function HistorialVentas() {
                               <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 <CheckCircle size={11} />
                                 Pagada
+                              </span>
+                            ) : venta.estado === 'PENDIENTE' || venta.estado === 'BORRADOR' ? (
+                              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
+                                <Clock size={11} />
+                                Pendiente
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-red-50 text-red-500 border border-red-200">
@@ -409,7 +417,7 @@ export default function HistorialVentas() {
                   <p className="text-xs text-gray-400 font-mono mt-0.5">
                     #{ventaDetalle.id.slice(-8).toUpperCase()}
                     {' · '}
-                    {ventaDetalle.vendedor_nombre || 'Vendedor desconocido'}
+                    {ventaDetalle.vendedor?.nombre || ventaDetalle.vendedor_nombre || 'Vendedor desconocido'}
                   </p>
                 </div>
               </div>
@@ -435,6 +443,10 @@ export default function HistorialVentas() {
                   {ventaDetalle.estado === 'PAGADA' ? (
                     <span className="inline-flex items-center gap-1 font-bold text-emerald-600">
                       <CheckCircle size={13} /> Pagada
+                    </span>
+                  ) : ventaDetalle.estado === 'PENDIENTE' || ventaDetalle.estado === 'BORRADOR' ? (
+                    <span className="inline-flex items-center gap-1 font-bold text-amber-600">
+                      <Clock size={13} /> Pendiente
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 font-bold text-red-500">
@@ -466,7 +478,7 @@ export default function HistorialVentas() {
                     {ventaDetalle.detalles.map((item, i) => (
                       <tr key={i}>
                         <td className="py-3 pr-2">
-                          <span className="font-medium text-gray-800">{item.nombre}</span>
+                          <span className="font-medium text-gray-800">{item.producto?.nombre || item.nombre || '—'}</span>
                         </td>
                         <td className="py-3 px-2 text-center">
                           <span className="text-xs font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
@@ -474,7 +486,7 @@ export default function HistorialVentas() {
                           </span>
                         </td>
                         <td className="py-3 px-2 text-right text-gray-500 text-xs">
-                          {formatPrecio(item.precio_unitario)}
+                          {formatPrecio(item.precio_unitario_historico ?? item.precio_unitario ?? 0)}
                         </td>
                         <td className="py-3 text-right font-bold text-gray-800">
                           {formatPrecio(item.subtotal)}

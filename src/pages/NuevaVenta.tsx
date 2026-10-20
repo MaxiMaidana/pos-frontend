@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '../api/axiosClient';
 import SyncButton from '../components/SyncButton';
@@ -71,6 +72,8 @@ const formatPrecio = (valor: number) =>
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function NuevaVenta() {
+  const navigate = useNavigate();
+
   // Catálogo
   const [productos, setProductos] = useState<Producto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -124,13 +127,23 @@ export default function NuevaVenta() {
             const sesionRaw = localStorage.getItem('sesion_caja');
             if (sesionRaw) {
               const sesion = JSON.parse(sesionRaw);
+              if (!sesion.abierta) {
+                toast.error('Debés abrir la caja antes de generar ventas.');
+                navigate('/caja', { replace: true });
+                return;
+              }
               setCajeroNombre(sesion.cajero ?? '');
+            } else {
+              toast.error('Debés abrir la caja antes de generar ventas.');
+              navigate('/caja', { replace: true });
             }
-          } catch {}
+          } catch {
+            navigate('/caja', { replace: true });
+          }
         }
       })
       .catch(() => {});
-  }, []);
+  }, [navigate]);
 
   // ── Fetch vendedores on mount (solo modo normal) ───────────────────────
   useEffect(() => {
