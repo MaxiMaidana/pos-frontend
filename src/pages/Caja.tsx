@@ -1082,40 +1082,46 @@ export default function Caja() {
               <div className="shrink-0 p-6 border-t border-gray-100 bg-gray-50 space-y-4">
 
                 {/* Descuento + Total */}
-                <div className="max-w-sm mx-auto w-full bg-white rounded-xl border border-gray-200 p-4 space-y-1.5">
-                  {seleccionada.descuento_total > 0 && (
-                    <div className="flex items-center justify-center gap-3 text-sm">
-                      <span className="text-gray-500">Descuento</span>
-                      <span className="text-emerald-600 font-semibold">
-                        -{formatPrecio(seleccionada.descuento_total)}
-                      </span>
+                <div className="max-w-sm mx-auto w-full bg-white rounded-2xl border border-gray-200 p-5">
+                  {(seleccionada.descuento_total > 0 || hayRecargo) && (
+                    <div className="w-fit mx-auto space-y-1.5 mb-3">
+                      {seleccionada.descuento_total > 0 && (
+                        <div className="flex items-center justify-between gap-6 text-sm">
+                          <span className="text-gray-500">Descuento</span>
+                          <span className="text-emerald-600 font-semibold">
+                            -{formatPrecio(seleccionada.descuento_total)}
+                          </span>
+                        </div>
+                      )}
+                      {hayRecargo && (
+                        <div className="flex items-center justify-between gap-6 text-sm">
+                          <span className="text-gray-500">Subtotal</span>
+                          <span className="font-semibold text-gray-700">{formatPrecio(total)}</span>
+                        </div>
+                      )}
+                      {hayRecargo && (
+                        <div className="flex items-center justify-between gap-6 text-sm">
+                          <span className="text-purple-600 font-semibold">
+                            Recargo crédito
+                          </span>
+                          <span className="font-semibold text-purple-600">
+                            +{formatPrecio(montoRecargo)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
-                  {hayRecargo && (
-                    <div className="flex items-center justify-center gap-3 text-sm">
-                      <span className="text-gray-500">Subtotal</span>
-                      <span className="font-semibold text-gray-700">{formatPrecio(total)}</span>
-                    </div>
-                  )}
-                  {hayRecargo && (
-                    <div className="flex items-center justify-center gap-3 text-sm">
-                      <span className="text-purple-600 font-semibold">
-                        Recargo crédito
-                      </span>
-                      <span className="font-semibold text-purple-600">
-                        +{formatPrecio(montoRecargo)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-center gap-3">
-                    <span className="text-base font-semibold text-gray-500">
+                  <div className={`text-center ${
+                    (seleccionada.descuento_total > 0 || hayRecargo) ? 'pt-3 border-t border-gray-100' : ''
+                  }`}>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
                       {hayRecargo ? 'Total final' : 'Total a cobrar'}
-                    </span>
-                    <span className={`text-3xl font-black ${
+                    </p>
+                    <p className={`text-4xl font-black leading-tight ${
                       hayRecargo ? 'text-purple-700' : 'text-gray-900'
                     }`}>
                       {formatPrecio(totalConRecargo)}
-                    </span>
+                    </p>
                   </div>
                 </div>
 
