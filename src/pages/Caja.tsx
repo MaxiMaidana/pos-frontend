@@ -1670,19 +1670,22 @@ export default function Caja() {
                 const total_ingresos = Number(arqueo.total_ingresos) || 0;
                 const total_retiros = Number(arqueo.total_retiros) || 0;
                 
-                // Calcular explícitamente el total esperado en el cajón
-                const totalEsperado = monto_inicial + ventas_efectivo + total_ingresos - total_retiros;
-                
+                // En MODO_CAJA_SIMPLE el monto_inicial es un valor nominal fijo que
+                // nunca se cuenta físicamente — no entra en el total esperado ni se muestra.
+                const totalEsperado = (modoCajaSimple ? 0 : monto_inicial) + ventas_efectivo + total_ingresos - total_retiros;
+
                 return (
                   <>
                     <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm border border-gray-100">
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
                         Resumen del turno
                       </p>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Efectivo inicial</span>
-                        <span className="font-semibold text-gray-700">{formatPrecio(monto_inicial)}</span>
-                      </div>
+                      {!modoCajaSimple && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Efectivo inicial</span>
+                          <span className="font-semibold text-gray-700">{formatPrecio(monto_inicial)}</span>
+                        </div>
+                      )}
                       {arqueo.ventas_por_metodo
                         ?.filter(p => p.metodo !== 'EFECTIVO')
                         .map(({ metodo, total }) => {
