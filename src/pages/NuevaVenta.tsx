@@ -86,8 +86,13 @@ export default function NuevaVenta() {
     () => localStorage.getItem('pos_stock_negativo') === 'true'
   );
 
-  // Modo Caja Simple
-  const [modoCajaSimple, setModoCajaSimple] = useState(false);
+  // Modo Caja Simple — se inicializa desde localStorage para que syncCarrito
+  // no salte temprano antes de que llegue la respuesta del config fetch.
+  const [modoCajaSimple, setModoCajaSimple] = useState<boolean>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('sesion_caja') || 'null')?.abierta === true;
+    } catch { return false; }
+  });
   const [cajeroNombre, setCajeroNombre] = useState('');
 
   // Vendedores & Venta Borrador

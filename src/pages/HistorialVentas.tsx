@@ -558,7 +558,7 @@ export default function HistorialVentas() {
                           className={`flex-1 py-1 rounded text-xs font-semibold border transition-all ${retryEsConsumidorFinal === true ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-amber-600 border-amber-300'}`}>
                           Consumidor final
                         </button>
-                        <button type="button" onClick={() => { setRetryEsConsumidorFinal(false); setRetryTipo(null); }}
+                        <button type="button" onClick={() => { setRetryEsConsumidorFinal(false); setRetryTipo(null); setRetryCuit(localStorage.getItem('pos_ultimo_cuit') ?? ''); }}
                           className={`flex-1 py-1 rounded text-xs font-semibold border transition-all ${retryEsConsumidorFinal === false ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-amber-600 border-amber-300'}`}>
                           Con CUIT
                         </button>

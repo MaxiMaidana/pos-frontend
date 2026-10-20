@@ -85,7 +85,7 @@ interface Arqueo {
   total_retiros?: number;
   total_ingresos?: number;
   total_esperado?: number;
-  ventas_por_metodo?: Record<string, number>;
+  ventas_por_metodo?: Array<{ metodo: string; total: number }>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -293,6 +293,10 @@ export default function Caja() {
       setFacturar(true);
       setEsConsumidorFinal(true);
       setTipoFactura(condicionFiscal === 'MONOTRIBUTO' ? 'C' : 'B');
+    } else if (transferenciaConsumidorFinal) {
+      setFacturar(false);
+      setEsConsumidorFinal(null);
+      setTipoFactura(null);
     }
   };
 
@@ -1703,17 +1707,17 @@ export default function Caja() {
                     </div>
 
                     {/* Desglose por método de pago */}
-                    {arqueo.ventas_por_metodo && Object.keys(arqueo.ventas_por_metodo).filter(m => m !== 'EFECTIVO').length > 0 && (
+                    {arqueo.ventas_por_metodo && arqueo.ventas_por_metodo.filter(p => p.metodo !== 'EFECTIVO').length > 0 && (
                       <div className="bg-gray-50 rounded-xl p-4 space-y-1.5 text-sm border border-gray-100">
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Otros métodos cobrados</p>
-                        {Object.entries(arqueo.ventas_por_metodo)
-                          .filter(([m]) => m !== 'EFECTIVO')
-                          .map(([metodo, monto]) => {
+                        {arqueo.ventas_por_metodo
+                          .filter(p => p.metodo !== 'EFECTIVO')
+                          .map(({ metodo, total }) => {
                             const label = metodo === 'TARJETA_DEBITO' ? 'Débito' : metodo === 'TARJETA_CREDITO' ? 'Crédito' : metodo === 'TRANSFERENCIA' ? 'Transferencia' : metodo === 'MERCADOPAGO' ? 'MercadoPago' : metodo;
                             return (
                               <div key={metodo} className="flex justify-between">
                                 <span className="text-gray-500">{label}</span>
-                                <span className="font-semibold text-gray-700">{formatPrecio(Number(monto))}</span>
+                                <span className="font-semibold text-gray-700">{formatPrecio(total)}</span>
                               </div>
                             );
                           })}
