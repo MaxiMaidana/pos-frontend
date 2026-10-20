@@ -279,40 +279,50 @@ export default function NuevaVenta() {
   );
 
   // ── Sync carrito con backend ─────────────────────────────────────────────
-  const syncCarrito = useCallback(async (items: ItemCarrito[]) => {
+  // Encolado con syncQueueRef: dos llamadas disparadas una atrás de la otra
+  // (ej. agregar 2 productos rápido) deben ejecutarse en serie, nunca en
+  // paralelo — si no, ambas ven ventaIdRef.current === null a la vez y cada
+  // una crea su propio borrador (POST en vez de POST+PUT), dejando huérfano
+  // el primero y rompiendo la recuperación de borrador al volver a la página.
+  const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const syncCarrito = useCallback((items: ItemCarrito[]) => {
     if (!selectedVendedorId && !modoCajaSimple) return;
 
-    const detalles = items.map((item) => ({
-      producto_id: item.producto_id,
-      cantidad: item.cantidad,
-      precio_unitario_historico: item.precio_unitario_historico,
-    }));
+    syncQueueRef.current = syncQueueRef.current.then(async () => {
+      const detalles = items.map((item) => ({
+        producto_id: item.producto_id,
+        cantidad: item.cantidad,
+        precio_unitario_historico: item.precio_unitario_historico,
+      }));
 
-    try {
-      setIsSyncing(true);
-      if (!ventaIdRef.current) {
-        let sesionId: string | null = null;
-        if (modoCajaSimple) {
-          try {
-            const raw = localStorage.getItem('sesion_caja');
-            if (raw) sesionId = JSON.parse(raw).sesion_id ?? null;
-          } catch {}
+      try {
+        setIsSyncing(true);
+        if (!ventaIdRef.current) {
+          let sesionId: string | null = null;
+          if (modoCajaSimple) {
+            try {
+              const raw = localStorage.getItem('sesion_caja');
+              if (raw) sesionId = JSON.parse(raw).sesion_id ?? null;
+            } catch {}
+          }
+          const { data } = await api.post('/ventas/borrador', {
+            ...(selectedVendedorId && { vendedorId: selectedVendedorId }),
+            ...(sesionId && { sesion_id: sesionId }),
+            detalles,
+          });
+          const newId = data.id ?? data.data?.id;
+          ventaIdRef.current = newId; // set ya mismo — la próxima llamada encolada lo necesita
+          setVentaId(newId);
+        } else {
+          await api.put(`/ventas/${ventaIdRef.current}/borrador`, { detalles });
         }
-        const { data } = await api.post('/ventas/borrador', {
-          ...(selectedVendedorId && { vendedorId: selectedVendedorId }),
-          ...(sesionId && { sesion_id: sesionId }),
-          detalles,
-        });
-        const newId = data.id ?? data.data?.id;
-        setVentaId(newId);
-      } else {
-        await api.put(`/ventas/${ventaIdRef.current}/borrador`, { detalles });
+      } catch {
+        toast.error('Error al sincronizar la comanda');
+      } finally {
+        setIsSyncing(false);
       }
-    } catch {
-      toast.error('Error al sincronizar la comanda');
-    } finally {
-      setIsSyncing(false);
-    }
+    });
   }, [selectedVendedorId, modoCajaSimple]);
 
   // ── Acciones del carrito ─────────────────────────────────────────────────
