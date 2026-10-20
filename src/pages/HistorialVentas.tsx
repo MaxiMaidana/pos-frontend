@@ -45,6 +45,7 @@ interface Venta {
   vendedor?: { id: string; nombre: string };
   sesion?: { cajero_nombre: string };
   cliente_nombre?: string;
+  cliente_cuit?: string;
   total: number;
   detalles: DetalleVenta[];
   pagos: PagoVenta[];
@@ -464,6 +465,12 @@ export default function HistorialVentas() {
                 <div>
                   <p className="text-[10px] text-gray-400 uppercase font-semibold">Cliente</p>
                   <p className="text-sm font-semibold text-gray-700">{ventaDetalle.cliente_nombre}</p>
+                </div>
+              )}
+              {ventaDetalle.cliente_cuit && (
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase font-semibold">CUIT</p>
+                  <p className="text-sm font-semibold text-gray-700">{ventaDetalle.cliente_cuit}</p>
                 </div>
               )}
             </div>
