@@ -386,7 +386,7 @@ export default function NuevaVenta() {
       })();
 
       setCarrito(nuevoCarrito);
-      if (selectedVendedorId) syncCarrito(nuevoCarrito);
+      syncCarrito(nuevoCarrito);
       toast.success('Producto creado y agregado al carrito.');
       setModalAltaOpen(false);
       setFormAlta({ nombre: '', precio_actual: '', codigo_barras: '', costo: '' });

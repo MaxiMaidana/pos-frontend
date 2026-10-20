@@ -187,6 +187,11 @@ export default function Caja() {
 
   // ── Fetch ventas pendientes ──────────────────────────────────────────────
   const fetchVentas = useCallback(async () => {
+    if (modoCajaSimple && !sesion?.sesion_id) {
+      setVentas([]);
+      setIsLoading(false);
+      return;
+    }
     try {
       setIsLoading(true);
       setErrorLista(null);
@@ -225,7 +230,7 @@ export default function Caja() {
       const { data } = await api.get<CajaDisponible[]>(`/caja`);
       setCajasDisponibles(data);
       if (data.length > 0) {
-        setFormApertura((prev) => ({ ...prev, caja_id: data[0].id }));
+        setFormApertura((prev) => ({ ...prev, caja_id: prev.caja_id || data[0].id }));
       }
     } catch {
       // Si falla, el select quedará vacío
@@ -238,10 +243,10 @@ export default function Caja() {
 
   // ── Modo simple: pre-setear caja_id del form cuando llega del config ─────
   useEffect(() => {
-    if (cajaIdLocal) {
+    if (modoCajaSimple && cajaIdLocal) {
       setFormApertura((prev) => ({ ...prev, caja_id: cajaIdLocal }));
     }
-  }, [cajaIdLocal]);
+  }, [modoCajaSimple, cajaIdLocal]);
 
   // ── Modo simple: verificar sesión activa en el backend al cargar ──────────
   useEffect(() => {
@@ -417,7 +422,6 @@ export default function Caja() {
       localStorage.setItem('sesion_caja', JSON.stringify(nuevaSesion));
       setSesion(nuevaSesion);
       setFormApertura({ cajero_nombre: '', monto_inicial: '', caja_id: '' });
-      await fetchVentas();
     } catch (err: any) {
       const msg: string = err?.response?.data?.error ?? '';
       if (msg.toLowerCase().includes('ya tiene una sesión abierta')) {
