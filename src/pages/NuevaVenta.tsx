@@ -254,9 +254,16 @@ export default function NuevaVenta() {
     try {
       setIsSyncing(true);
       if (!ventaIdRef.current) {
+        let sesionId: string | null = null;
+        if (modoCajaSimple) {
+          try {
+            const raw = localStorage.getItem('sesion_caja');
+            if (raw) sesionId = JSON.parse(raw).sesion_id ?? null;
+          } catch {}
+        }
         const { data } = await api.post('/ventas/borrador', {
           ...(selectedVendedorId && { vendedorId: selectedVendedorId }),
-          // shortcut: sesion_id no se pasa; POST /ventas/borrador no lo acepta aún
+          ...(sesionId && { sesion_id: sesionId }),
           detalles,
         });
         const newId = data.id ?? data.data?.id;
