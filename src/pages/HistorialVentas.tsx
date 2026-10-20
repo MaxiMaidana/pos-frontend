@@ -460,6 +460,12 @@ export default function HistorialVentas() {
                   )}
                 </p>
               </div>
+              {ventaDetalle.cliente_nombre && (
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase font-semibold">Cliente</p>
+                  <p className="text-sm font-semibold text-gray-700">{ventaDetalle.cliente_nombre}</p>
+                </div>
+              )}
             </div>
 
             {/* Lista de productos */}

@@ -370,9 +370,10 @@ export default function Caja() {
       } else {
         alert('¡Cobro registrado con éxito!');
       }
+      const ventaId = seleccionada.id;
       setSeleccionada(null);
       resetPagos();
-      await fetchVentas();
+      setVentas((prev) => prev.filter((v) => v.id !== ventaId));
     } catch {
       alert('❌ Error al registrar el cobro. Intentá de nuevo.');
     } finally {
