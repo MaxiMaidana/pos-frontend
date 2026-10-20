@@ -81,10 +81,11 @@ interface FormMovimiento {
 
 interface Arqueo {
   monto_inicial: number;
-  ventas_efectivo?: number;        // Campo que envía el backend
+  ventas_efectivo?: number;
   total_retiros?: number;
   total_ingresos?: number;
   total_esperado?: number;
+  ventas_por_metodo?: Record<string, number>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -116,7 +117,7 @@ export default function Caja() {
   const [facturacionHabilitada, setFacturacionHabilitada] = useState(false);
   const [esConsumidorFinal, setEsConsumidorFinal] = useState<boolean | null>(null);
   const [tipoFactura, setTipoFactura] = useState<'A' | 'B' | 'C' | null>(null);
-  const [compradorCuit, setCompradorCuit] = useState('');
+  const [compradorCuit, setCompradorCuit] = useState(() => localStorage.getItem('pos_ultimo_cuit') ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Sesión de caja
@@ -158,11 +159,12 @@ export default function Caja() {
   // ── Modo Caja Simple ──────────────────────────────────────────────────────
   const [modoCajaSimple, setModoCajaSimple] = useState(false);
   const [cajaIdLocal, setCajaIdLocal] = useState<string | null>(null);
+  const [transferenciaConsumidorFinal, setTransferenciaConsumidorFinal] = useState(false);
 
   const fetchConfig = useCallback(async () => {
     try {
       setIsLoadingConfig(true);
-      const { data } = await api.get<{ recargos_credito?: Record<string, number>; condicionFiscal?: 'MONOTRIBUTO' | 'RESPONSABLE_INSCRIPTO'; facturacionHabilitada?: boolean; modoCajaSimple?: boolean; cajaId?: string | null }>('/config');
+      const { data } = await api.get<{ recargos_credito?: Record<string, number>; condicionFiscal?: 'MONOTRIBUTO' | 'RESPONSABLE_INSCRIPTO'; facturacionHabilitada?: boolean; modoCajaSimple?: boolean; cajaId?: string | null; transferenciaConsumidorFinal?: boolean }>('/config');
       const raw = data?.recargos_credito ?? {};
       const parsed: Record<number, number> = {};
       for (const [k, v] of Object.entries(raw)) {
@@ -174,6 +176,7 @@ export default function Caja() {
       setFacturacionHabilitada(data?.facturacionHabilitada ?? false);
       setModoCajaSimple(data?.modoCajaSimple ?? false);
       setCajaIdLocal(data?.cajaId ?? null);
+      setTransferenciaConsumidorFinal(data?.transferenciaConsumidorFinal ?? false);
     } catch {
       // Keep previous values on error
     } finally {
@@ -275,10 +278,10 @@ export default function Caja() {
     setFacturar(false);
     setEsConsumidorFinal(null);
     setTipoFactura(null);
-    setCompradorCuit('');
+    setCompradorCuit(localStorage.getItem('pos_ultimo_cuit') ?? '');
   };
 
-  const cambiarMetodo = (idx: number, metodo: MetodoPago) =>
+  const cambiarMetodo = (idx: number, metodo: MetodoPago) => {
     setPagos((prev) =>
       prev.map((p, i) =>
         i === idx
@@ -286,6 +289,12 @@ export default function Caja() {
           : p
       )
     );
+    if (metodo === 'TRANSFERENCIA' && transferenciaConsumidorFinal && facturacionHabilitada) {
+      setFacturar(true);
+      setEsConsumidorFinal(true);
+      setTipoFactura(condicionFiscal === 'MONOTRIBUTO' ? 'C' : 'B');
+    }
+  };
 
   const cambiarTipoTarjeta = (idx: number, tipo: TipoTarjeta) =>
     setPagos((prev) =>
@@ -365,6 +374,7 @@ export default function Caja() {
     try {
       setIsSubmitting(true);
       await api.post(`/ventas/${seleccionada.id}/cobrar`, payload);
+      if (compradorCuit) localStorage.setItem('pos_ultimo_cuit', compradorCuit);
       if (facturar && tipoFactura) {
         alert('✅ Cobro registrado. La factura ARCA se está procesando — si falla la encontrás en el historial para reintentar.');
       } else {
@@ -394,9 +404,10 @@ export default function Caja() {
         sesion_id: sesion?.sesion_id,
       });
       alert('🗑️ Comanda anulada. El stock fue repuesto.');
+      const anulId = seleccionada.id;
       setSeleccionada(null);
       resetPagos();
-      await fetchVentas();
+      setVentas((prev) => prev.filter((v) => v.id !== anulId));
     } catch {
       alert('❌ Error al anular la comanda. Intentá de nuevo.');
     } finally {
@@ -630,6 +641,21 @@ export default function Caja() {
                   Cancelar
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Error: MODO_CAJA_SIMPLE sin CAJA_ID configurado ──────── */}
+        {modoCajaSimple && !cajaIdLocal && !isLoadingConfig && (
+          <div className="fixed inset-0 bg-gray-50 flex items-center justify-center p-6 z-40">
+            <div className="bg-white rounded-2xl shadow-xl border border-red-100 p-8 max-w-sm w-full text-center">
+              <div className="p-4 bg-red-50 rounded-2xl inline-flex mb-4">
+                <AlertCircle size={28} className="text-red-500" />
+              </div>
+              <h2 className="text-lg font-black text-gray-800 mb-2">Configuración incompleta</h2>
+              <p className="text-sm text-gray-500 leading-relaxed">
+                El servidor tiene <span className="font-semibold">MODO_CAJA_SIMPLE=true</span> pero no tiene <span className="font-semibold">CAJA_ID</span> configurado en el <code className="bg-gray-100 px-1 rounded">.env</code>. Agregá la variable y reiniciá el servidor.
+              </p>
             </div>
           </div>
         )}
@@ -1675,6 +1701,24 @@ export default function Caja() {
                         <span className="text-indigo-700">{formatPrecio(totalEsperado)}</span>
                       </div>
                     </div>
+
+                    {/* Desglose por método de pago */}
+                    {arqueo.ventas_por_metodo && Object.keys(arqueo.ventas_por_metodo).filter(m => m !== 'EFECTIVO').length > 0 && (
+                      <div className="bg-gray-50 rounded-xl p-4 space-y-1.5 text-sm border border-gray-100">
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Otros métodos cobrados</p>
+                        {Object.entries(arqueo.ventas_por_metodo)
+                          .filter(([m]) => m !== 'EFECTIVO')
+                          .map(([metodo, monto]) => {
+                            const label = metodo === 'TARJETA_DEBITO' ? 'Débito' : metodo === 'TARJETA_CREDITO' ? 'Crédito' : metodo === 'TRANSFERENCIA' ? 'Transferencia' : metodo === 'MERCADOPAGO' ? 'MercadoPago' : metodo;
+                            return (
+                              <div key={metodo} className="flex justify-between">
+                                <span className="text-gray-500">{label}</span>
+                                <span className="font-semibold text-gray-700">{formatPrecio(Number(monto))}</span>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
 
                     {/* Monto contado */}
                     <div>

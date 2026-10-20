@@ -208,6 +208,8 @@ function SkeletonTable({ rows = 4 }: { rows?: number }) {
 export default function Dashboard() {
   const [fecha, setFecha] = useState<string>(hoy);
   const [isTogglingFacturacion, setIsTogglingFacturacion] = useState(false);
+  const [transferenciaConsumidorFinal, setTransferenciaConsumidorFinal] = useState(false);
+  const [isTogglingTransferencia, setIsTogglingTransferencia] = useState(false);
   const [tiendas, setTiendas] = useState<Tienda[]>([]);
   const [tiendaSeleccionada, setTiendaSeleccionada] = useState<string>('');
   const [filtroInicialResuelto, setFiltroInicialResuelto] = useState(false);
@@ -293,6 +295,13 @@ export default function Dashboard() {
 
 
     return () => { cancelled = true; };
+  }, []);
+
+  // ── Fetch config global (transferenciaConsumidorFinal) ──────────────────
+  useEffect(() => {
+    api.get<{ transferenciaConsumidorFinal?: boolean }>('/config')
+      .then(({ data }) => setTransferenciaConsumidorFinal(data?.transferenciaConsumidorFinal ?? false))
+      .catch(() => {});
   }, []);
 
   // ── Fetch de datos ───────────────────────────────────────────────────────
@@ -1020,6 +1029,49 @@ export default function Dashboard() {
             </div>
           );
         })()}
+
+        {/* ── Transferencia → Consumidor Final ────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-50 rounded-xl">
+                <ArrowRightLeft size={18} className="text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-800">Transferencia → Consumidor Final</h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {transferenciaConsumidorFinal
+                    ? 'Al elegir Transferencia se marca automáticamente Consumidor Final.'
+                    : 'El cajero elige el tipo de factura manualmente.'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                setIsTogglingTransferencia(true);
+                try {
+                  const nuevoValor = !transferenciaConsumidorFinal;
+                  await api.put('/config', { transferenciaConsumidorFinal: nuevoValor });
+                  setTransferenciaConsumidorFinal(nuevoValor);
+                } catch {
+                  alert('❌ No se pudo actualizar la configuración.');
+                } finally {
+                  setIsTogglingTransferencia(false);
+                }
+              }}
+              disabled={isTogglingTransferencia}
+              className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${
+                transferenciaConsumidorFinal ? 'bg-blue-600' : 'bg-gray-200'
+              } ${isTogglingTransferencia ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
+                  transferenciaConsumidorFinal ? 'translate-x-6' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════

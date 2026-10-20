@@ -133,6 +133,25 @@ export default function NuevaVenta() {
                 return;
               }
               setCajeroNombre(sesion.cajero ?? '');
+            // Restaurar borrador de la sesión activa
+            if (sesion.sesion_id) {
+              api.get('/ventas', { params: { sesion_id: sesion.sesion_id, estado: 'BORRADOR' } })
+                .then(({ data: vd }) => {
+                  const ventas = Array.isArray(vd) ? vd : vd.data ?? [];
+                  if (ventas.length > 0) {
+                    const v = ventas[0];
+                    setVentaId(v.id);
+                    setCarrito((v.detalles || []).map((d: DetalleVenta) => ({
+                      producto_id: d.producto_id,
+                      nombre: d.nombre || d.producto?.nombre || 'Producto',
+                      precio_unitario_historico: d.precio_unitario_historico,
+                      cantidad: d.cantidad,
+                      stock_local: d.producto?.stock_local ?? 0,
+                    })));
+                  }
+                })
+                .catch(() => {});
+            }
             } else {
               toast.error('Debés abrir la caja antes de generar ventas.');
               navigate('/caja', { replace: true });
