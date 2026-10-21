@@ -77,9 +77,9 @@ const formatFecha = (iso: string) =>
 
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 
-/** Detecta si el texto parece un ID de ticket (UUID o alfanumérico largo) */
+/** Detecta si el texto parece un ID de ticket (UUID completo o el hex corto de 8 que se muestra en la UI) */
 const esIdTicket = (txt: string) =>
-  /^[0-9a-f-]{8,}$/i.test(txt.trim()) || /^[A-Z0-9]{6,}$/i.test(txt.trim());
+  /^[0-9a-f-]{8,}$/i.test(txt.trim());
 
 const LIMIT = 20;
 
