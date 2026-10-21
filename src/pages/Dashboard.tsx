@@ -213,6 +213,7 @@ export default function Dashboard() {
   const [transferenciaConsumidorFinal, setTransferenciaConsumidorFinal] = useState(false);
   const [colorPrimario, setColorPrimario] = useState('');
   const [isSavingColor, setIsSavingColor] = useState(false);
+  const [modoCajaSimple, setModoCajaSimple] = useState(false);
   const [isTogglingTransferencia, setIsTogglingTransferencia] = useState(false);
   const [tiendas, setTiendas] = useState<Tienda[]>([]);
   const [tiendaSeleccionada, setTiendaSeleccionada] = useState<string>('');
@@ -301,12 +302,13 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, []);
 
-  // ── Fetch config global (transferenciaConsumidorFinal, colorPrimario) ───
+  // ── Fetch config global (transferenciaConsumidorFinal, colorPrimario, modoCajaSimple) ───
   useEffect(() => {
-    api.get<{ transferenciaConsumidorFinal?: boolean; colorPrimario?: string | null }>('/config')
+    api.get<{ transferenciaConsumidorFinal?: boolean; colorPrimario?: string | null; modoCajaSimple?: boolean }>('/config')
       .then(({ data }) => {
         setTransferenciaConsumidorFinal(data?.transferenciaConsumidorFinal ?? false);
         setColorPrimario(data?.colorPrimario ?? '');
+        setModoCajaSimple(data?.modoCajaSimple ?? false);
       })
       .catch(() => {});
   }, []);
@@ -693,8 +695,8 @@ export default function Dashboard() {
         {/* ── Tablas de Rendimiento ───────────────────────────────────────── */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
-          {/* ── Sección A: Rendimiento por Vendedor ── */}
-          {loading ? (
+          {/* ── Sección A: Rendimiento por Vendedor (sin sentido en modo caja simple — ahí todo es "Sin vendedor") ── */}
+          {modoCajaSimple ? null : loading ? (
             <SkeletonTable rows={4} />
           ) : analiticas && (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -800,11 +802,11 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* ── Sección B: Arqueo de Cajas ── */}
+          {/* ── Sección B: Arqueo de Cajas — ocupa todo el ancho si no hay sección A al lado ── */}
           {loading ? (
             <SkeletonTable rows={3} />
           ) : analiticas && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden ${modoCajaSimple ? 'xl:col-span-2' : ''}`}>
               {/* Header */}
               <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
                 <div className="p-2 bg-emerald-50 rounded-lg">
@@ -822,7 +824,7 @@ export default function Dashboard() {
                   <p className="text-sm text-gray-400">Sin sesiones de caja para esta fecha</p>
                 </div>
               ) : (
-                <div className="divide-y divide-gray-50">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 p-4">
                   {(analiticas?.reporteCajas ?? []).slice().sort((a, b) => {
                       // Prioridad 1: ABIERTA siempre primero
                       const aAbierta = a.estado === 'ABIERTA' ? 0 : 1;
@@ -849,7 +851,7 @@ export default function Dashboard() {
                     return (
                       <div
                         key={caja.id}
-                        className="px-6 py-5 hover:bg-indigo-50 cursor-pointer transition-colors"
+                        className="p-5 rounded-xl border border-gray-100 hover:bg-indigo-50 hover:border-indigo-200 cursor-pointer transition-colors"
                         onClick={() => handleOpenModal(
                           'caja',
                           caja.sesion_id || caja.id,
