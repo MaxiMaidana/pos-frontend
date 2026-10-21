@@ -228,50 +228,26 @@ export default function Caja() {
     }
   }, []);
 
-  // ── Fetch cajas disponibles (solo cuando no hay sesión y no es modo simple) ──
+  // ── Fetch cajas disponibles (en los dos modos — cada dispositivo elige la suya) ──
+  // Si CAJA_ID está configurado en el .env del backend, se usa como default
+  // preseleccionado (conveniencia para el caso de 1 sola caja), pero siempre
+  // se puede cambiar: varios dispositivos comparten el mismo backend y cada
+  // uno puede abrir una caja distinta (Caja 1 / Caja 2 / Caja 3...).
   const fetchCajas = useCallback(async () => {
     try {
       const { data } = await api.get<CajaDisponible[]>(`/caja`);
       setCajasDisponibles(data);
       if (data.length > 0) {
-        setFormApertura((prev) => ({ ...prev, caja_id: prev.caja_id || data[0].id }));
+        setFormApertura((prev) => ({ ...prev, caja_id: prev.caja_id || cajaIdLocal || data[0].id }));
       }
     } catch {
       // Si falla, el select quedará vacío
     }
-  }, []);
+  }, [cajaIdLocal]);
 
   useEffect(() => {
-    if (!sesion && !modoCajaSimple) fetchCajas();
-  }, [sesion, modoCajaSimple, fetchCajas]);
-
-  // ── Modo simple: pre-setear caja_id del form cuando llega del config ─────
-  useEffect(() => {
-    if (modoCajaSimple && cajaIdLocal) {
-      setFormApertura((prev) => ({ ...prev, caja_id: cajaIdLocal }));
-    }
-  }, [modoCajaSimple, cajaIdLocal]);
-
-  // ── Modo simple: verificar sesión activa en el backend al cargar ──────────
-  useEffect(() => {
-    if (!modoCajaSimple || !cajaIdLocal || sesion) return;
-    api.get<{ sesion: { id: string; cajero_nombre: string; caja_id: string } | null }>(
-      `/sesiones/activa?caja_id=${cajaIdLocal}`
-    )
-      .then(({ data }) => {
-        if (data.sesion) {
-          const s: SesionCaja = {
-            abierta: true,
-            cajero: data.sesion.cajero_nombre,
-            caja_id: data.sesion.caja_id,
-            sesion_id: data.sesion.id,
-          };
-          localStorage.setItem('sesion_caja', JSON.stringify(s));
-          setSesion(s);
-        }
-      })
-      .catch(() => {}); // en caso de error, mostrar form de apertura
-  }, [modoCajaSimple, cajaIdLocal, sesion]);
+    if (!sesion) fetchCajas();
+  }, [sesion, fetchCajas]);
 
   // ── Helpers de líneas de pago ─────────────────────────────────────────────
   const resetPagos = () => {
@@ -650,21 +626,6 @@ export default function Caja() {
           </div>
         )}
 
-        {/* ── Error: MODO_CAJA_SIMPLE sin CAJA_ID configurado ──────── */}
-        {modoCajaSimple && !cajaIdLocal && !isLoadingConfig && (
-          <div className="fixed inset-0 bg-gray-50 flex items-center justify-center p-6 z-40">
-            <div className="bg-white rounded-2xl shadow-xl border border-red-100 p-8 max-w-sm w-full text-center">
-              <div className="p-4 bg-red-50 rounded-2xl inline-flex mb-4">
-                <AlertCircle size={28} className="text-red-500" />
-              </div>
-              <h2 className="text-lg font-black text-gray-800 mb-2">Configuración incompleta</h2>
-              <p className="text-sm text-gray-500 leading-relaxed">
-                El servidor tiene <span className="font-semibold">MODO_CAJA_SIMPLE=true</span> pero no tiene <span className="font-semibold">CAJA_ID</span> configurado en el <code className="bg-gray-100 px-1 rounded">.env</code>. Agregá la variable y reiniciá el servidor.
-              </p>
-            </div>
-          </div>
-        )}
-
         {/* ── Bloque móvil ────────────────────────────────────────────── */}
         <div className="flex md:hidden flex-col items-center justify-center h-full bg-gray-50 text-center p-8 gap-5">
           <div className="p-5 bg-red-50 rounded-full">
@@ -697,27 +658,26 @@ export default function Caja() {
               onSubmit={(e) => { e.preventDefault(); handleAbrirCaja(); }}
               className="space-y-4"
             >
-              {/* Selector de caja — oculto en modo simple (caja pre-configurada) */}
-              {!modoCajaSimple && (
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                    Caja de trabajo
-                  </label>
-                  <div className="relative">
-                    <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                    <select
-                      value={formApertura.caja_id}
-                      onChange={(e) => setFormApertura((prev) => ({ ...prev, caja_id: e.target.value }))}
-                      className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent appearance-none cursor-pointer transition"
-                    >
-                      {cajasDisponibles.length === 0 && <option value="">Cargando cajas...</option>}
-                      {cajasDisponibles.map((caja) => (
-                        <option key={caja.id} value={caja.id}>{caja.nombre}</option>
-                      ))}
-                    </select>
-                  </div>
+              {/* Selector de caja — siempre visible: varios dispositivos pueden
+                  compartir el mismo backend y cada uno abre una caja distinta */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Caja de trabajo
+                </label>
+                <div className="relative">
+                  <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <select
+                    value={formApertura.caja_id}
+                    onChange={(e) => setFormApertura((prev) => ({ ...prev, caja_id: e.target.value }))}
+                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent appearance-none cursor-pointer transition"
+                  >
+                    {cajasDisponibles.length === 0 && <option value="">Cargando cajas...</option>}
+                    {cajasDisponibles.map((caja) => (
+                      <option key={caja.id} value={caja.id}>{caja.nombre}</option>
+                    ))}
+                  </select>
                 </div>
-              )}
+              </div>
 
               {/* Nombre del cajero */}
               <div>
