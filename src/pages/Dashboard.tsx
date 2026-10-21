@@ -983,6 +983,9 @@ export default function Dashboard() {
         {/* ── Configuración de Pagos ─────────────────────────────────── */}
         <PaymentConfig />
 
+        {/* ── Preferencias y marca ─────────────────────────────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+
         {/* ── Facturación ARCA ────────────────────────────────────────── */}
         {(() => {
           const tiendaActual = tiendas.find((t) => t.id === tiendaSeleccionada);
@@ -1107,7 +1110,7 @@ export default function Dashboard() {
               value={colorPrimario}
               onChange={(e) => setColorPrimario(e.target.value)}
               placeholder="#4f46e5 (indigo por defecto)"
-              className="flex-1 px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+              className="flex-1 min-w-0 px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
             />
             <button
               onClick={async () => {
@@ -1131,6 +1134,8 @@ export default function Dashboard() {
           <p className="text-[11px] text-gray-400 mt-2.5">
             Se aplica acá al instante. En los otros locales aparece recién cuando reinician el programa (no hace falta en este, el que estás usando ahora).
           </p>
+        </div>
+
         </div>
       </div>
 
