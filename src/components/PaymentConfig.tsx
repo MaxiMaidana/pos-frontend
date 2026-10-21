@@ -113,8 +113,8 @@ export default function PaymentConfig() {
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-purple-50 rounded-lg">
-            <Settings size={15} className="text-purple-600" />
+          <div className="p-2 bg-indigo-50 rounded-lg">
+            <Settings size={15} className="text-indigo-600" />
           </div>
           <div>
             <h2 className="text-sm font-bold text-gray-800">Configuración de Pagos</h2>
@@ -125,7 +125,7 @@ export default function PaymentConfig() {
           onClick={fetchConfig}
           disabled={loading}
           title="Recargar configuración"
-          className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-purple-500 transition-colors disabled:opacity-40"
+          className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-indigo-500 transition-colors disabled:opacity-40"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         </button>
@@ -175,7 +175,7 @@ export default function PaymentConfig() {
                       value={entry.cuotas || ''}
                       onChange={(e) => updateRow(idx, 'cuotas', e.target.value)}
                       placeholder="Ej: 12"
-                      className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent transition"
+                      className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
                     />
                   </div>
                   <div className="relative">
@@ -187,7 +187,7 @@ export default function PaymentConfig() {
                       value={entry.porcentaje || ''}
                       onChange={(e) => updateRow(idx, 'porcentaje', e.target.value)}
                       placeholder="Ej: 25"
-                      className="w-full pl-3 pr-8 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-transparent transition"
+                      className="w-full pl-3 pr-8 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
                     />
                   </div>
                   <button
@@ -205,7 +205,7 @@ export default function PaymentConfig() {
             {/* Botón agregar */}
             <button
               onClick={addRow}
-              className="flex items-center gap-1.5 text-xs font-semibold text-purple-500 hover:text-purple-700 transition-colors"
+              className="flex items-center gap-1.5 text-xs font-semibold text-indigo-500 hover:text-indigo-700 transition-colors"
             >
               <Plus size={14} />
               Agregar cuota
@@ -218,7 +218,7 @@ export default function PaymentConfig() {
               className={`w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
                 saving
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  : 'bg-purple-600 hover:bg-purple-700 text-white shadow-sm'
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm'
               }`}
             >
               {saving ? (

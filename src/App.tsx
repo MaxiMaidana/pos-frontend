@@ -135,11 +135,7 @@ function Sidebar({
       {(!collapsed || mobile) && (
         <div className="px-5 pt-3 pb-1">
           <span
-            className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-              rol === 'ADMIN'
-                ? 'bg-violet-100 text-violet-600'
-                : 'bg-indigo-100 text-indigo-600'
-            }`}
+            className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-600"
           >
             <ShieldCheck size={9} />
             {rol === 'ADMIN' ? 'Administrador' : 'Empleado'}

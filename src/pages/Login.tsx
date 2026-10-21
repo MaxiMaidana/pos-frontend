@@ -131,9 +131,7 @@ export default function Login() {
         )}
 
         {/* Descripción del modo */}
-        <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl mb-5 text-xs font-medium ${
-          tab === 'admin' ? 'bg-violet-50 text-violet-700' : 'bg-indigo-50 text-indigo-700'
-        }`}>
+        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-5 text-xs font-medium bg-indigo-50 text-indigo-700">
           {tab === 'admin'
             ? <ShieldCheck size={13} className="shrink-0" />
             : <UserCheck size={13} className="shrink-0" />
@@ -188,9 +186,7 @@ export default function Login() {
               ${
                 !password || isLoading
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  : tab === 'admin'
-                    ? 'bg-violet-600 hover:bg-violet-700 active:scale-[0.98] text-white shadow-lg shadow-violet-100'
-                    : 'bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-lg shadow-indigo-100'
+                  : 'bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-lg shadow-indigo-100'
               }
             `}
           >
