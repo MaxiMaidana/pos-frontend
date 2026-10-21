@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Toaster } from 'sonner';
 import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import {
@@ -25,6 +25,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { AdminRoute, EmpleadoRoute, SharedRoute } from './components/ProtectedRoute';
 import { isWebMode } from './utils/env';
 import { useNombreTienda } from './hooks/useNombreTienda';
+import { applyPrimaryColor } from './utils/theme';
+import api from './api/axiosClient';
 
 // ─── Nav items ────────────────────────────────────────────────────────────────
 
@@ -250,6 +252,14 @@ function AppContent() {
   const { rol } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // ── Color de marca custom (si el local configuró uno) ───────────────────
+  useEffect(() => {
+    if (rol === null) return; // sin token todavía, /config no responde
+    api.get<{ colorPrimario?: string | null }>('/config')
+      .then(({ data }) => applyPrimaryColor(data?.colorPrimario))
+      .catch(() => {});
+  }, [rol]);
 
   const isAuth = rol !== null;
   const navItems = (rol === 'ADMIN' || isWebMode) ? NAV_ITEMS_ADMIN : NAV_ITEMS_CAJERO;

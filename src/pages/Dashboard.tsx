@@ -3,6 +3,7 @@ import api from '../api/axiosClient';
 import { RECARGOS_CREDITO } from '../utils/constants';
 import PaymentConfig from '../components/PaymentConfig';
 import { isWebMode } from '../utils/env';
+import { applyPrimaryColor } from '../utils/theme';
 import {
   DollarSign,
   ShoppingBag,
@@ -13,6 +14,7 @@ import {
   User,
   CreditCard,
   ArrowRightLeft,
+  Palette,
   Banknote,
   BarChart3,
   RefreshCw,
@@ -209,6 +211,8 @@ export default function Dashboard() {
   const [fecha, setFecha] = useState<string>(hoy);
   const [isTogglingFacturacion, setIsTogglingFacturacion] = useState(false);
   const [transferenciaConsumidorFinal, setTransferenciaConsumidorFinal] = useState(false);
+  const [colorPrimario, setColorPrimario] = useState('');
+  const [isSavingColor, setIsSavingColor] = useState(false);
   const [isTogglingTransferencia, setIsTogglingTransferencia] = useState(false);
   const [tiendas, setTiendas] = useState<Tienda[]>([]);
   const [tiendaSeleccionada, setTiendaSeleccionada] = useState<string>('');
@@ -297,10 +301,13 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, []);
 
-  // ── Fetch config global (transferenciaConsumidorFinal) ──────────────────
+  // ── Fetch config global (transferenciaConsumidorFinal, colorPrimario) ───
   useEffect(() => {
-    api.get<{ transferenciaConsumidorFinal?: boolean }>('/config')
-      .then(({ data }) => setTransferenciaConsumidorFinal(data?.transferenciaConsumidorFinal ?? false))
+    api.get<{ transferenciaConsumidorFinal?: boolean; colorPrimario?: string | null }>('/config')
+      .then(({ data }) => {
+        setTransferenciaConsumidorFinal(data?.transferenciaConsumidorFinal ?? false);
+        setColorPrimario(data?.colorPrimario ?? '');
+      })
       .catch(() => {});
   }, []);
 
@@ -1069,6 +1076,59 @@ export default function Dashboard() {
               />
             </button>
           </div>
+        </div>
+
+        {/* ── Color primario de marca ──────────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2.5 bg-pink-50 rounded-xl">
+              <Palette size={18} className="text-pink-600" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-800">Color primario de marca</h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Reemplaza el indigo por defecto en botones, acentos y la barra lateral.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={colorPrimario || '#4f46e5'}
+              onChange={(e) => setColorPrimario(e.target.value)}
+              className="w-11 h-11 rounded-lg border border-gray-200 cursor-pointer shrink-0"
+              aria-label="Elegir color primario"
+            />
+            <input
+              type="text"
+              value={colorPrimario}
+              onChange={(e) => setColorPrimario(e.target.value)}
+              placeholder="#4f46e5 (indigo por defecto)"
+              className="flex-1 px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
+            />
+            <button
+              onClick={async () => {
+                setIsSavingColor(true);
+                try {
+                  const valor = colorPrimario.trim() || null;
+                  await api.put('/config', { colorPrimario: valor });
+                  applyPrimaryColor(valor);
+                } catch {
+                  alert('❌ No se pudo guardar el color.');
+                } finally {
+                  setIsSavingColor(false);
+                }
+              }}
+              disabled={isSavingColor}
+              className="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold transition-colors shrink-0"
+            >
+              {isSavingColor ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2.5">
+            Se aplica acá al instante. En los otros locales aparece recién cuando reinician el programa (no hace falta en este, el que estás usando ahora).
+          </p>
         </div>
       </div>
 
