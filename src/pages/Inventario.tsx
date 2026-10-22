@@ -39,7 +39,7 @@ interface Producto {
   categoria?: string;
   proveedor?: string;
   stock_local: number;
-  stock_otro?: number | null;
+  stock_por_local?: { tienda_id: string; tienda_nombre: string; cantidad: number }[];
   stock_minimo: number;
   activo?: boolean;
 }
@@ -660,23 +660,20 @@ export default function Inventario() {
 
                       {/* Stock */}
                       <td className="px-4 py-4 whitespace-nowrap">
-                        <div className="flex flex-nowrap items-center justify-center gap-1.5">
-                          {/* L1 — este local */}
-                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
-                            producto.stock_local > 0
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-red-50 text-red-500 border-red-200'
-                          }`}>
-                            🏠 L1: {producto.stock_local}
-                          </span>
-                          {/* L2 — otro local */}
-                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
-                            (producto.stock_otro ?? 0) > 0
-                              ? 'bg-sky-50 text-sky-700 border-sky-200'
-                              : 'bg-red-50 text-red-500 border-red-200'
-                          }`}>
-                            🏪 L2: {producto.stock_otro ?? 0}
-                          </span>
+                        <div className="flex flex-wrap items-center justify-center gap-1.5">
+                          {(producto.stock_por_local ?? []).map((item) => (
+                            <span
+                              key={item.tienda_id}
+                              title={item.tienda_nombre}
+                              className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
+                                item.cantidad > 0
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-red-50 text-red-500 border-red-200'
+                              }`}
+                            >
+                              {item.tienda_nombre}: {item.cantidad}
+                            </span>
+                          ))}
                         </div>
                       </td>
 
@@ -1118,21 +1115,20 @@ export default function Inventario() {
               {/* Stock badges */}
               <div className="flex items-center justify-between pt-4">
                 <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Stock</span>
-                <div className="flex items-center gap-1.5">
-                  <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
-                    productoViendo.stock_local > 0
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-red-50 text-red-500 border-red-200'
-                  }`}>
-                    🏠 L1: {productoViendo.stock_local}
-                  </span>
-                  <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
-                    (productoViendo.stock_otro ?? 0) > 0
-                      ? 'bg-sky-50 text-sky-700 border-sky-200'
-                      : 'bg-red-50 text-red-500 border-red-200'
-                  }`}>
-                    🏪 L2: {productoViendo.stock_otro ?? 0}
-                  </span>
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                  {(productoViendo.stock_por_local ?? []).map((item) => (
+                    <span
+                      key={item.tienda_id}
+                      title={item.tienda_nombre}
+                      className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
+                        item.cantidad > 0
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-red-50 text-red-500 border-red-200'
+                      }`}
+                    >
+                      {item.tienda_nombre}: {item.cantidad}
+                    </span>
+                  ))}
                 </div>
               </div>
             </div>

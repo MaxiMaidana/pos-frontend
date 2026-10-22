@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axiosClient';
 import { RECARGOS_CREDITO } from '../utils/constants';
-import PaymentConfig from '../components/PaymentConfig';
 import { isWebMode } from '../utils/env';
-import { applyPrimaryColor } from '../utils/theme';
 import {
   DollarSign,
   ShoppingBag,
@@ -14,7 +12,6 @@ import {
   User,
   CreditCard,
   ArrowRightLeft,
-  Palette,
   Banknote,
   BarChart3,
   RefreshCw,
@@ -209,12 +206,7 @@ function SkeletonTable({ rows = 4 }: { rows?: number }) {
 
 export default function Dashboard() {
   const [fecha, setFecha] = useState<string>(hoy);
-  const [isTogglingFacturacion, setIsTogglingFacturacion] = useState(false);
-  const [transferenciaConsumidorFinal, setTransferenciaConsumidorFinal] = useState(false);
-  const [colorPrimario, setColorPrimario] = useState('');
-  const [isSavingColor, setIsSavingColor] = useState(false);
   const [modoCajaSimple, setModoCajaSimple] = useState(false);
-  const [isTogglingTransferencia, setIsTogglingTransferencia] = useState(false);
   const [tiendas, setTiendas] = useState<Tienda[]>([]);
   const [tiendaSeleccionada, setTiendaSeleccionada] = useState<string>('');
   const [filtroInicialResuelto, setFiltroInicialResuelto] = useState(false);
@@ -302,12 +294,10 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, []);
 
-  // ── Fetch config global (transferenciaConsumidorFinal, colorPrimario, modoCajaSimple) ───
+  // ── Fetch config global (modoCajaSimple) ───────────────────────────────
   useEffect(() => {
-    api.get<{ transferenciaConsumidorFinal?: boolean; colorPrimario?: string | null; modoCajaSimple?: boolean }>('/config')
+    api.get<{ modoCajaSimple?: boolean }>('/config')
       .then(({ data }) => {
-        setTransferenciaConsumidorFinal(data?.transferenciaConsumidorFinal ?? false);
-        setColorPrimario(data?.colorPrimario ?? '');
         setModoCajaSimple(data?.modoCajaSimple ?? false);
       })
       .catch(() => {});
@@ -980,163 +970,6 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* ── Configuración de Pagos ─────────────────────────────────── */}
-        <PaymentConfig />
-
-        {/* ── Preferencias y marca ─────────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-
-        {/* ── Facturación ARCA ────────────────────────────────────────── */}
-        {(() => {
-          const tiendaActual = tiendas.find((t) => t.id === tiendaSeleccionada);
-          const facturacionHabilitada = tiendaActual?.facturacionHabilitada ?? false;
-          return (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-indigo-50 rounded-xl">
-                    <Receipt size={18} className="text-indigo-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-gray-800">Facturación electrónica ARCA</h3>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {!tiendaSeleccionada
-                        ? 'Seleccioná una sucursal para configurarlo.'
-                        : facturacionHabilitada
-                          ? 'Los cajeros pueden emitir facturas al cobrar.'
-                          : 'El checkbox de facturar está oculto en la caja.'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={async () => {
-                    if (!tiendaSeleccionada) return;
-                    setIsTogglingFacturacion(true);
-                    try {
-                      const nuevoValor = !facturacionHabilitada;
-                      await api.put(`/tiendas/${tiendaSeleccionada}/facturacion`, { habilitada: nuevoValor });
-                      setTiendas((prev) =>
-                        prev.map((t) => t.id === tiendaSeleccionada ? { ...t, facturacionHabilitada: nuevoValor } : t)
-                      );
-                    } catch {
-                      alert('❌ No se pudo actualizar la configuración.');
-                    } finally {
-                      setIsTogglingFacturacion(false);
-                    }
-                  }}
-                  disabled={isTogglingFacturacion || !tiendaSeleccionada}
-                  className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${
-                    facturacionHabilitada ? 'bg-indigo-600' : 'bg-gray-200'
-                  } ${(isTogglingFacturacion || !tiendaSeleccionada) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                >
-                  <span
-                    className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
-                      facturacionHabilitada ? 'translate-x-6' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── Transferencia → Consumidor Final ────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-blue-50 rounded-xl">
-                <ArrowRightLeft size={18} className="text-blue-600" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-gray-800">Transferencia → Consumidor Final</h3>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {transferenciaConsumidorFinal
-                    ? 'Al elegir Transferencia se marca automáticamente Consumidor Final.'
-                    : 'El cajero elige el tipo de factura manualmente.'}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={async () => {
-                setIsTogglingTransferencia(true);
-                try {
-                  const nuevoValor = !transferenciaConsumidorFinal;
-                  await api.put('/config', { transferenciaConsumidorFinal: nuevoValor });
-                  setTransferenciaConsumidorFinal(nuevoValor);
-                } catch {
-                  alert('❌ No se pudo actualizar la configuración.');
-                } finally {
-                  setIsTogglingTransferencia(false);
-                }
-              }}
-              disabled={isTogglingTransferencia}
-              className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${
-                transferenciaConsumidorFinal ? 'bg-blue-600' : 'bg-gray-200'
-              } ${isTogglingTransferencia ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
-                  transferenciaConsumidorFinal ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* ── Color primario de marca ──────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2.5 bg-pink-50 rounded-xl">
-              <Palette size={18} className="text-pink-600" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-gray-800">Color primario de marca</h3>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Reemplaza el indigo por defecto en botones, acentos y la barra lateral.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <input
-              type="color"
-              value={colorPrimario || '#4f46e5'}
-              onChange={(e) => setColorPrimario(e.target.value)}
-              className="w-11 h-11 rounded-lg border border-gray-200 cursor-pointer shrink-0"
-              aria-label="Elegir color primario"
-            />
-            <input
-              type="text"
-              value={colorPrimario}
-              onChange={(e) => setColorPrimario(e.target.value)}
-              placeholder="#4f46e5 (indigo por defecto)"
-              className="flex-1 min-w-0 px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent transition"
-            />
-            <button
-              onClick={async () => {
-                setIsSavingColor(true);
-                try {
-                  const valor = colorPrimario.trim() || null;
-                  await api.put('/config', { colorPrimario: valor });
-                  applyPrimaryColor(valor);
-                } catch {
-                  alert('❌ No se pudo guardar el color.');
-                } finally {
-                  setIsSavingColor(false);
-                }
-              }}
-              disabled={isSavingColor}
-              className="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold transition-colors shrink-0"
-            >
-              {isSavingColor ? 'Guardando...' : 'Guardar'}
-            </button>
-          </div>
-          <p className="text-[11px] text-gray-400 mt-2.5">
-            Se aplica acá al instante. En los otros locales aparece recién cuando reinician el programa (no hace falta en este, el que estás usando ahora).
-          </p>
-        </div>
-
-        </div>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════

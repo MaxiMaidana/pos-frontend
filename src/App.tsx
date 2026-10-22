@@ -14,11 +14,13 @@ import {
   ShieldCheck,
   AlertTriangle,
   Receipt,
+  Settings,
 } from 'lucide-react';
 import NuevaVenta from './pages/NuevaVenta';
 import Caja from './pages/Caja';
 import Inventario from './pages/Inventario';
 import Dashboard from './pages/Dashboard';
+import ConfiguracionComercio from './pages/ConfiguracionComercio';
 import Login from './pages/Login';
 import HistorialVentas from './pages/HistorialVentas';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -41,6 +43,7 @@ const NAV_ITEMS_ADMIN = [
   { to: '/dashboard',       icon: BarChart3,    label: 'Dashboard'         },
   { to: '/inventario',      icon: PackageOpen,  label: 'Inventario'        },
   { to: '/historial',       icon: Receipt,      label: 'Historial de Ventas' },
+  { to: '/configuracion',   icon: Settings,     label: 'Config Comercio'   },
 ];
 
 type NavItem = (typeof NAV_ITEMS_CAJERO)[number];
@@ -326,6 +329,7 @@ function AppContent() {
             <Route path="/inventario" element={<SharedRoute><Inventario /></SharedRoute>}         />
             <Route path="/historial"  element={<SharedRoute><HistorialVentas /></SharedRoute>}   />
             <Route path="/dashboard"  element={<AdminRoute><Dashboard /></AdminRoute>}           />
+            <Route path="/configuracion" element={<AdminRoute><ConfiguracionComercio /></AdminRoute>} />
             <Route path="*"           element={<Navigate to="/login" replace />}                 />
           </Routes>
         </main>
